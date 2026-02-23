@@ -1,0 +1,28 @@
+{
+  "seeds": [
+    {
+      "name": "Corn",
+      "count": 1,
+      "roleId": "1392622157460144198"
+    },
+    {
+      "name": "Carrot",
+      "count": 16,
+      "roleId": "1439345675690049666"
+    }
+  ],
+  "gear": [
+    {
+      "name": "Favorite Tool",
+      "count": 4,
+      "roleId": "1392625026313883668"
+    },
+    {
+      "name": "Watering Can",
+      "count": 8,
+      "roleId": "1392625953322176512"
+    }
+  ],
+  "weather": null,
+  "lastUpdate": "2026-02-23T16:10:26.256Z"
+}
