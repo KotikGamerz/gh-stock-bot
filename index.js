@@ -4,6 +4,18 @@ const axios = require('axios');
 const { fetch } = require('undici');
 const fs = require('fs').promises;
 
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('🌱 Garden Horizons Bot is running!');
+});
+
+app.listen(port, () => {
+    console.log(`✅ Web server running on port ${port}`);
+});
+
 const client = new Client();
 
 // Эмодзи для всего
@@ -410,5 +422,6 @@ client.on('ready', async () => {
     
     console.log('👀 Бот запущен и следит за каналами');
 });
+
 
 client.login(process.env.USER_TOKEN);
