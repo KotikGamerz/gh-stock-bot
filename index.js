@@ -178,52 +178,54 @@ async function parseOfficialSeedChannel() {
 
 
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ГИР) =====
-async function parseOfficialGearChannel() {
+async function parseBackupGearChannel() {
     try {
-        const channel = client.channels.cache.get(process.env.GEAR_CHANNEL_ID);
-        if (!channel) return null;
+        console.log('🔍 Начинаю парсинг backup гира...');
         
-        const messages = await channel.messages.fetch({ limit: 1 });
-        const msg = messages.first();
-        
-        if (!msg || !msg.components.length) return null;
-        
-        // Проверка на свежесть (максимум 10 минут)
-        const messageAge = Date.now() - msg.createdTimestamp;
-        const maxAge = 5 * 60 * 1000; // 5 минут
-        
-        if (messageAge > maxAge) {
-            console.log(`⏰ Сообщение гира слишком старое (${Math.round(messageAge/60000)} мин)`);
+        const channel = client.channels.cache.get(process.env.BACKUP_GEAR_ID);
+        if (!channel) {
+            console.log('❌ Канал backup гира не найден!');
             return null;
         }
         
-        const text = extractTextFromComponents(msg.components);
-        const lines = text.split('\n');
-        const items = [];
+        console.log(`✅ Канал найден: #${channel.name}`);
         
-        for (const line of lines) {
-            const match = line.match(/<@&(\d+)>\s*\(x(\d+)\)/);
-            if (match) {
-                const roleId = match[1];
-                const count = parseInt(match[2]);
-                const name = await findRoleName(roleId);
+        const messages = await channel.messages.fetch({ limit: 5 });
+        console.log(`📨 Получено сообщений: ${messages.size}`);
+        
+        for (const [msgId, msg] of messages) {
+            console.log(`\n=== Сообщение ${msgId} ===`);
+            console.log(`Автор: ${msg.author.username}`);
+            console.log(`Embed count: ${msg.embeds.length}`);
+            
+            if (msg.embeds && msg.embeds.length > 0) {
+                const embed = msg.embeds[0];
+                console.log('Embed найден!');
+                console.log('Title:', embed.title);
+                console.log('Description:', embed.description);
                 
-                if (name) {
-                    items.push({ 
-                        name: name, 
-                        count: count,
-                        roleId: roleId
+                if (embed.fields) {
+                    console.log(`Fields count: ${embed.fields.length}`);
+                    embed.fields.forEach((field, index) => {
+                        console.log(`\n--- Field ${index} ---`);
+                        console.log('Name:', field.name);
+                        console.log('Value:', field.value);
                     });
+                } else {
+                    console.log('❌ Нет fields в embed');
                 }
+            } else {
+                console.log('❌ Нет embed в сообщении');
+                console.log('Content:', msg.content);
             }
         }
         
-        return items.length ? items : null;
+        return null; // Временно всегда возвращаем null для теста
     } catch (error) {
-        console.error('Ошибка парсинга официального гира:', error.message);
+        console.error('❌ Ошибка:', error);
         return null;
     }
-                        }
+}
 
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ПОГОДА) =====
 async function parseOfficialWeatherChannel() {
@@ -581,6 +583,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
