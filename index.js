@@ -139,6 +139,15 @@ async function parseOfficialSeedChannel() {
         
         if (!msg || !msg.components.length) return null;
         
+        // Проверка на свежесть (максимум 10 минут)
+        const messageAge = Date.now() - msg.createdTimestamp;
+        const maxAge = 6 * 60 * 1000; // 5 минут
+        
+        if (messageAge > maxAge) {
+            console.log(`⏰ Сообщение семян слишком старое (${Math.round(messageAge/60000)} мин)`);
+            return null;
+        }
+        
         const text = extractTextFromComponents(msg.components);
         const lines = text.split('\n');
         const items = [];
@@ -167,6 +176,7 @@ async function parseOfficialSeedChannel() {
     }
 }
 
+
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ГИР) =====
 async function parseOfficialGearChannel() {
     try {
@@ -177,6 +187,15 @@ async function parseOfficialGearChannel() {
         const msg = messages.first();
         
         if (!msg || !msg.components.length) return null;
+        
+        // Проверка на свежесть (максимум 10 минут)
+        const messageAge = Date.now() - msg.createdTimestamp;
+        const maxAge = 5 * 60 * 1000; // 5 минут
+        
+        if (messageAge > maxAge) {
+            console.log(`⏰ Сообщение гира слишком старое (${Math.round(messageAge/60000)} мин)`);
+            return null;
+        }
         
         const text = extractTextFromComponents(msg.components);
         const lines = text.split('\n');
@@ -204,7 +223,7 @@ async function parseOfficialGearChannel() {
         console.error('Ошибка парсинга официального гира:', error.message);
         return null;
     }
-}
+                        }
 
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ПОГОДА) =====
 async function parseOfficialWeatherChannel() {
@@ -216,6 +235,15 @@ async function parseOfficialWeatherChannel() {
         const msg = messages.first();
         
         if (!msg || !msg.components.length) return null;
+        
+        // Проверка на свежесть (максимум 10 минут)
+        const messageAge = Date.now() - msg.createdTimestamp;
+        const maxAge = 5 * 60 * 1000; // 5 минут
+        
+        if (messageAge > maxAge) {
+            console.log(`⏰ Сообщение погоды слишком старое (${Math.round(messageAge/60000)} мин)`);
+            return null;
+        }
         
         const text = extractTextFromComponents(msg.components);
         
@@ -237,6 +265,7 @@ async function parseOfficialWeatherChannel() {
         return null;
     }
 }
+
 
 // ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
 async function parseBackupSeedChannel() {
@@ -542,5 +571,6 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
