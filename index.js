@@ -459,14 +459,20 @@ async function checkAll() {
     let newGear = await parseOfficialGearChannel();
     let newWeather = await parseOfficialWeatherChannel();
     let source = 'official';
+    let hasData = false;
     
     // 2️⃣ Если официальный бот не работает, проверяем backup
     if (!newSeeds && !newGear) {
         console.log('⚠️ Официальный бот молчит, пробую backup...');
         newSeeds = await parseBackupSeedChannel();
         newGear = await parseBackupGearChannel();
-        newWeather = null; // в backup режиме погоды нет
+        newWeather = null;
         source = 'backup';
+    }
+    
+    // Проверяем есть ли хоть какие-то данные
+    if (newSeeds || newGear || newWeather) {
+        hasData = true;
     }
     
     let changed = false;
@@ -477,12 +483,23 @@ async function checkAll() {
             stockData.seeds = newSeeds;
             changed = true;
         }
+    } else {
+        // Если нет семян, но раньше были - очищаем
+        if (stockData.seeds.length > 0) {
+            stockData.seeds = [];
+            changed = true;
+        }
     }
     
     if (newGear) {
         if (JSON.stringify(newGear) !== JSON.stringify(stockData.gear)) {
             console.log(`🔄 Гир изменился (${source} mode)`);
             stockData.gear = newGear;
+            changed = true;
+        }
+    } else {
+        if (stockData.gear.length > 0) {
+            stockData.gear = [];
             changed = true;
         }
     }
@@ -493,19 +510,20 @@ async function checkAll() {
             stockData.weather = newWeather;
             changed = true;
         }
-    } else if (source === 'backup') {
-        // В backup режиме очищаем погоду
+    } else {
         if (stockData.weather) {
             stockData.weather = null;
             changed = true;
         }
     }
     
-    if (changed) {
+    if (changed && hasData) {
         stockData.source = source;
         stockData.lastUpdate = new Date().toISOString();
         await saveState();
         await sendToDiscord();
+    } else if (!hasData) {
+        console.log('⚠️ Нет данных ни от одного источника');
     } else {
         console.log(`⏺️ Без изменений (${source} mode)`);
     }
@@ -524,4 +542,5 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
