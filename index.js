@@ -273,33 +273,36 @@ async function parseBackupSeedChannel() {
         const channel = client.channels.cache.get(process.env.BACKUP_SEED_ID);
         if (!channel) return null;
         
-        const messages = await channel.messages.fetch({ limit: 5 });
+        const messages = await channel.messages.fetch({ limit: 10 });
+        const items = [];
         
         for (const msg of messages.values()) {
-            // Ищем embed с семенами
+            // Проверяем что это embed от GH Stocks
             if (msg.embeds && msg.embeds.length > 0) {
                 const embed = msg.embeds[0];
-                if (embed.description && embed.description.includes('Seeds Stock')) {
-                    const lines = embed.description.split('\n');
-                    const items = [];
-                    
-                    for (const line of lines) {
-                        // Парсим "Carrot - x16" -> name: Carrot, count: 16
-                        const match = line.match(/(\w+)\s*-\s*x?(\d+)/i);
-                        if (match) {
-                            items.push({
-                                name: match[1],
-                                count: parseInt(match[2])
-                                // roleId нет - это backup режим
-                            });
+                
+                // Ищем поле с семенами
+                if (embed.fields) {
+                    for (const field of embed.fields) {
+                        if (field.name && field.name.includes('Seeds Stock')) {
+                            const lines = field.value.split('\n');
+                            
+                            for (const line of lines) {
+                                const match = line.match(/(\w+)\s*x(\d+)/i);
+                                if (match) {
+                                    items.push({
+                                        name: match[1],
+                                        count: parseInt(match[2])
+                                    });
+                                }
+                            }
                         }
                     }
-                    
-                    return items.length ? items : null;
                 }
             }
         }
-        return null;
+        
+        return items.length ? items : null;
     } catch (error) {
         console.error('Ошибка парсинга backup семян:', error.message);
         return null;
@@ -312,30 +315,37 @@ async function parseBackupGearChannel() {
         const channel = client.channels.cache.get(process.env.BACKUP_GEAR_ID);
         if (!channel) return null;
         
-        const messages = await channel.messages.fetch({ limit: 5 });
+        const messages = await channel.messages.fetch({ limit: 10 });
+        const items = [];
         
         for (const msg of messages.values()) {
             if (msg.embeds && msg.embeds.length > 0) {
                 const embed = msg.embeds[0];
-                if (embed.description && embed.description.includes('Gear Stock')) {
-                    const lines = embed.description.split('\n');
-                    const items = [];
-                    
-                    for (const line of lines) {
-                        const match = line.match(/([\w\s]+)\s*-\s*x?(\d+)/i);
-                        if (match) {
-                            items.push({
-                                name: match[1].trim(),
-                                count: parseInt(match[2])
-                            });
+                
+                // Ищем поле "Gears Stock" (может быть с/без s)
+                if (embed.fields) {
+                    for (const field of embed.fields) {
+                        if (field.name && field.name.toLowerCase().includes('gear stock')) {
+                            const lines = field.value.split('\n');
+                            
+                            for (const line of lines) {
+                                // Убираем эмодзи в начале
+                                const cleanLine = line.replace(/[^\w\s]/g, '').trim();
+                                const match = cleanLine.match(/([\w\s]+)\s*x(\d+)/i);
+                                if (match) {
+                                    items.push({
+                                        name: match[1].trim(),
+                                        count: parseInt(match[2])
+                                    });
+                                }
+                            }
                         }
                     }
-                    
-                    return items.length ? items : null;
                 }
             }
         }
-        return null;
+        
+        return items.length ? items : null;
     } catch (error) {
         console.error('Ошибка парсинга backup гира:', error.message);
         return null;
@@ -571,6 +581,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
