@@ -276,34 +276,30 @@ async function parseBackupSeedChannel() {
             return null;
         }
         
-        console.log(`✅ Канал найден: #${channel.name}`);
+        const messages = await channel.messages.fetch({ limit: 1 }); // БЕРЁМ ТОЛЬКО 1
+        const msg = messages.first();
         
-        const messages = await channel.messages.fetch({ limit: 5 });
-        console.log(`📨 Получено сообщений: ${messages.size}`);
+        if (!msg || !msg.embeds || !msg.embeds.length) {
+            console.log('❌ Нет embed в последнем сообщении');
+            return null;
+        }
         
+        const embed = msg.embeds[0];
         const items = [];
         
-        for (const msg of messages.values()) {
-            if (msg.embeds && msg.embeds.length > 0) {
-                const embed = msg.embeds[0];
+        if (embed.description) {
+            const lines = embed.description.split('\n');
+            
+            for (const line of lines) {
+                // Убираем эмодзи и спецсимволы
+                const cleanLine = line.replace(/[•\s]/g, '').trim();
+                const match = cleanLine.match(/(\w+)\s*x(\d+)/i);
                 
-                // Данные в description, а не в fields!
-                if (embed.description) {
-                    const lines = embed.description.split('\n');
-                    
-                    for (const line of lines) {
-                        // Убираем эмодзи и спецсимволы
-                        const cleanLine = line.replace(/[•\s]/g, '').trim();
-                        const match = cleanLine.match(/(\w+)\s*x(\d+)/i);
-                        
-                        if (match) {
-                            console.log(`✅ Найдено: ${match[1]} x${match[2]}`);
-                            items.push({
-                                name: match[1],
-                                count: parseInt(match[2])
-                            });
-                        }
-                    }
+                if (match) {
+                    items.push({
+                        name: match[1],
+                        count: parseInt(match[2])
+                    });
                 }
             }
         }
@@ -317,7 +313,7 @@ async function parseBackupSeedChannel() {
     }
 }
 
-// ===== ПАРСИНГ BACKUP БОТА (ГИР) =====
+// ===== ПАРСИНГ BACKUP БОТА (ГИР) ======
 async function parseBackupGearChannel() {
     try {
         console.log('\n🔍 Парсинг backup гира...');
@@ -328,34 +324,30 @@ async function parseBackupGearChannel() {
             return null;
         }
         
-        console.log(`✅ Канал найден: #${channel.name}`);
+        const messages = await channel.messages.fetch({ limit: 1 }); // ТОЛЬКО 1
+        const msg = messages.first();
         
-        const messages = await channel.messages.fetch({ limit: 5 });
-        console.log(`📨 Получено сообщений: ${messages.size}`);
+        if (!msg || !msg.embeds || !msg.embeds.length) {
+            console.log('❌ Нет embed в последнем сообщении');
+            return null;
+        }
         
+        const embed = msg.embeds[0];
         const items = [];
         
-        for (const msg of messages.values()) {
-            if (msg.embeds && msg.embeds.length > 0) {
-                const embed = msg.embeds[0];
+        if (embed.description) {
+            const lines = embed.description.split('\n');
+            
+            for (const line of lines) {
+                const cleanLine = line.replace(/[•\s]/g, '').trim();
+                const withoutEmoji = cleanLine.replace(/[^\w\s]/g, '').trim();
+                const match = withoutEmoji.match(/([\w\s]+)\s*x(\d+)/i);
                 
-                if (embed.description) {
-                    const lines = embed.description.split('\n');
-                    
-                    for (const line of lines) {
-                        // Убираем эмодзи в начале
-                        const cleanLine = line.replace(/[•\s]/g, '').trim();
-                        const withoutEmoji = cleanLine.replace(/[^\w\s]/g, '').trim();
-                        const match = withoutEmoji.match(/([\w\s]+)\s*x(\d+)/i);
-                        
-                        if (match) {
-                            console.log(`✅ Найдено: ${match[1].trim()} x${match[2]}`);
-                            items.push({
-                                name: match[1].trim(),
-                                count: parseInt(match[2])
-                            });
-                        }
-                    }
+                if (match) {
+                    items.push({
+                        name: match[1].trim(),
+                        count: parseInt(match[2])
+                    });
                 }
             }
         }
@@ -602,3 +594,4 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
