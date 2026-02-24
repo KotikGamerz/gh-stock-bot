@@ -291,35 +291,32 @@ async function parseBackupSeedChannel() {
             if (msg.embeds && msg.embeds.length > 0) {
                 const embed = msg.embeds[0];
                 
+                // ВЫВОДИМ ВСЁ ЧТО ЕСТЬ В EMBED
+                console.log('=== ПОЛНОЕ СОДЕРЖИМОЕ EMBED ===');
+                console.log('Title:', embed.title);
+                console.log('Description:', embed.description);
+                
                 if (embed.fields) {
-                    for (const field of embed.fields) {
-                        console.log(`Field name: ${field.name}`);
-                        console.log(`Field value: ${field.value}`);
-                        
-                        if (field.name && field.name.includes('Seeds Stock')) {
-                            const lines = field.value.split('\n');
-                            
-                            for (const line of lines) {
-                                const match = line.match(/(\w+)\s*x(\d+)/i);
-                                if (match) {
-                                    console.log(`✅ Найдено: ${match[1]} x${match[2]}`);
-                                    items.push({
-                                        name: match[1],
-                                        count: parseInt(match[2])
-                                    });
-                                }
-                            }
-                        }
+                    console.log(`Fields count: ${embed.fields.length}`);
+                    embed.fields.forEach((field, i) => {
+                        console.log(`\n--- Field ${i} ---`);
+                        console.log('Name:', field.name);
+                        console.log('Value:', field.value);
+                    });
+                } else {
+                    console.log('❌ Нет fields в embed');
+                    
+                    // Может данные в description?
+                    if (embed.description) {
+                        console.log('Description content:', embed.description);
                     }
                 }
             }
         }
         
-        console.log(`\n📊 Найдено предметов: ${items.length}`);
-        return items.length ? items : null;
-        
+        return null; // Временно для теста
     } catch (error) {
-        console.error('❌ Ошибка парсинга backup семян:', error);
+        console.error('❌ Ошибка:', error);
         return null;
     }
 }
@@ -618,6 +615,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
