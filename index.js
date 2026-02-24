@@ -276,50 +276,41 @@ async function parseBackupSeedChannel() {
             return null;
         }
         
-        console.log(`✅ Канал найден: #${channel.name}`);
-        
         const messages = await channel.messages.fetch({ limit: 5 });
-        console.log(`📨 Получено сообщений: ${messages.size}`);
-        
         const items = [];
         
-        for (const [msgId, msg] of messages) {
-            console.log(`\n--- Сообщение ${msgId} ---`);
-            console.log(`Автор: ${msg.author.username}`);
-            console.log(`Embed count: ${msg.embeds.length}`);
-            
+        for (const msg of messages.values()) {
             if (msg.embeds && msg.embeds.length > 0) {
                 const embed = msg.embeds[0];
                 
-                // ВЫВОДИМ ВСЁ ЧТО ЕСТЬ В EMBED
-                console.log('=== ПОЛНОЕ СОДЕРЖИМОЕ EMBED ===');
-                console.log('Title:', embed.title);
-                console.log('Description:', embed.description);
-                
-                if (embed.fields) {
-                    console.log(`Fields count: ${embed.fields.length}`);
-                    embed.fields.forEach((field, i) => {
-                        console.log(`\n--- Field ${i} ---`);
-                        console.log('Name:', field.name);
-                        console.log('Value:', field.value);
-                    });
-                } else {
-                    console.log('❌ Нет fields в embed');
+                // Данные в description, а не в fields!
+                if (embed.description) {
+                    const lines = embed.description.split('\n');
                     
-                    // Может данные в description?
-                    if (embed.description) {
-                        console.log('Description content:', embed.description);
+                    for (const line of lines) {
+                        // Убираем эмодзи в начале (• 🥕 Carrot x17)
+                        const cleanLine = line.replace(/[•\s]/g, '').trim();
+                        const match = cleanLine.match(/(\w+)\s*x(\d+)/i);
+                        
+                        if (match) {
+                            items.push({
+                                name: match[1],
+                                count: parseInt(match[2])
+                            });
+                        }
                     }
                 }
             }
         }
         
-        return null; // Временно для теста
+        // Берём самое свежее сообщение (первое в списке)
+        return items.length ? items : null;
+        
     } catch (error) {
-        console.error('❌ Ошибка:', error);
+        console.error('❌ Ошибка парсинга backup семян:', error);
         return null;
     }
-}
+}    
 
 // ===== ПАРСИНГ BACKUP БОТА (ГИР) =====
 async function parseBackupGearChannel() {
@@ -332,48 +323,34 @@ async function parseBackupGearChannel() {
             return null;
         }
         
-        console.log(`✅ Канал найден: #${channel.name}`);
-        
         const messages = await channel.messages.fetch({ limit: 5 });
-        console.log(`📨 Получено сообщений: ${messages.size}`);
-        
         const items = [];
         
-        for (const [msgId, msg] of messages) {
-            console.log(`\n--- Сообщение ${msgId} ---`);
-            console.log(`Автор: ${msg.author.username}`);
-            console.log(`Embed count: ${msg.embeds.length}`);
-            
+        for (const msg of messages.values()) {
             if (msg.embeds && msg.embeds.length > 0) {
                 const embed = msg.embeds[0];
                 
-                if (embed.fields) {
-                    for (const field of embed.fields) {
-                        console.log(`Field name: ${field.name}`);
-                        console.log(`Field value: ${field.value}`);
+                if (embed.description) {
+                    const lines = embed.description.split('\n');
+                    
+                    for (const line of lines) {
+                        // Пример: • 💧 Watering Can x5
+                        const cleanLine = line.replace(/[•\s]/g, '').trim();
+                        // Убираем эмодзи в начале
+                        const withoutEmoji = cleanLine.replace(/[^\w\s]/g, '').trim();
+                        const match = withoutEmoji.match(/([\w\s]+)\s*x(\d+)/i);
                         
-                        if (field.name && field.name.toLowerCase().includes('gear stock')) {
-                            const lines = field.value.split('\n');
-                            
-                            for (const line of lines) {
-                                // Убираем эмодзи
-                                const cleanLine = line.replace(/[^\w\s]/g, '').trim();
-                                const match = cleanLine.match(/([\w\s]+)\s*x(\d+)/i);
-                                if (match) {
-                                    console.log(`✅ Найдено: ${match[1].trim()} x${match[2]}`);
-                                    items.push({
-                                        name: match[1].trim(),
-                                        count: parseInt(match[2])
-                                    });
-                                }
-                            }
+                        if (match) {
+                            items.push({
+                                name: match[1].trim(),
+                                count: parseInt(match[2])
+                            });
                         }
                     }
                 }
             }
         }
         
-        console.log(`\n📊 Найдено предметов: ${items.length}`);
         return items.length ? items : null;
         
     } catch (error) {
@@ -615,6 +592,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
