@@ -64,7 +64,7 @@ let stockData = {
     weather: null,
     lastUpdate: null,
     messageId: null,
-    source: 'official', // official или backup
+    source: 'official',
     downNotified: false
 };
 
@@ -139,9 +139,9 @@ async function parseOfficialSeedChannel() {
         
         if (!msg || !msg.components.length) return null;
         
-        // Проверка на свежесть (максимум 10 минут)
+        // Проверка на свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
-        const maxAge = 6 * 60 * 1000; // 5 минут
+        const maxAge = 5 * 60 * 1000;
         
         if (messageAge > maxAge) {
             console.log(`⏰ Сообщение семян слишком старое (${Math.round(messageAge/60000)} мин)`);
@@ -176,53 +176,50 @@ async function parseOfficialSeedChannel() {
     }
 }
 
-
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ГИР) =====
-async function parseBackupGearChannel() {
+async function parseOfficialGearChannel() {
     try {
-        console.log('🔍 Начинаю парсинг backup гира...');
+        const channel = client.channels.cache.get(process.env.GEAR_CHANNEL_ID);
+        if (!channel) return null;
         
-        const channel = client.channels.cache.get(process.env.BACKUP_GEAR_ID);
-        if (!channel) {
-            console.log('❌ Канал backup гира не найден!');
+        const messages = await channel.messages.fetch({ limit: 1 });
+        const msg = messages.first();
+        
+        if (!msg || !msg.components.length) return null;
+        
+        // Проверка на свежесть (5 минут)
+        const messageAge = Date.now() - msg.createdTimestamp;
+        const maxAge = 5 * 60 * 1000;
+        
+        if (messageAge > maxAge) {
+            console.log(`⏰ Сообщение гира слишком старое (${Math.round(messageAge/60000)} мин)`);
             return null;
         }
         
-        console.log(`✅ Канал найден: #${channel.name}`);
+        const text = extractTextFromComponents(msg.components);
+        const lines = text.split('\n');
+        const items = [];
         
-        const messages = await channel.messages.fetch({ limit: 5 });
-        console.log(`📨 Получено сообщений: ${messages.size}`);
-        
-        for (const [msgId, msg] of messages) {
-            console.log(`\n=== Сообщение ${msgId} ===`);
-            console.log(`Автор: ${msg.author.username}`);
-            console.log(`Embed count: ${msg.embeds.length}`);
-            
-            if (msg.embeds && msg.embeds.length > 0) {
-                const embed = msg.embeds[0];
-                console.log('Embed найден!');
-                console.log('Title:', embed.title);
-                console.log('Description:', embed.description);
+        for (const line of lines) {
+            const match = line.match(/<@&(\d+)>\s*\(x(\d+)\)/);
+            if (match) {
+                const roleId = match[1];
+                const count = parseInt(match[2]);
+                const name = await findRoleName(roleId);
                 
-                if (embed.fields) {
-                    console.log(`Fields count: ${embed.fields.length}`);
-                    embed.fields.forEach((field, index) => {
-                        console.log(`\n--- Field ${index} ---`);
-                        console.log('Name:', field.name);
-                        console.log('Value:', field.value);
+                if (name) {
+                    items.push({ 
+                        name: name, 
+                        count: count,
+                        roleId: roleId
                     });
-                } else {
-                    console.log('❌ Нет fields в embed');
                 }
-            } else {
-                console.log('❌ Нет embed в сообщении');
-                console.log('Content:', msg.content);
             }
         }
         
-        return null; // Временно всегда возвращаем null для теста
+        return items.length ? items : null;
     } catch (error) {
-        console.error('❌ Ошибка:', error);
+        console.error('Ошибка парсинга официального гира:', error.message);
         return null;
     }
 }
@@ -238,9 +235,9 @@ async function parseOfficialWeatherChannel() {
         
         if (!msg || !msg.components.length) return null;
         
-        // Проверка на свежесть (максимум 10 минут)
+        // Проверка на свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
-        const maxAge = 5 * 60 * 1000; // 5 минут
+        const maxAge = 5 * 60 * 1000;
         
         if (messageAge > maxAge) {
             console.log(`⏰ Сообщение погоды слишком старое (${Math.round(messageAge/60000)} мин)`);
@@ -268,30 +265,44 @@ async function parseOfficialWeatherChannel() {
     }
 }
 
-
 // ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
 async function parseBackupSeedChannel() {
     try {
-        const channel = client.channels.cache.get(process.env.BACKUP_SEED_ID);
-        if (!channel) return null;
+        console.log('\n🔍 Парсинг backup семян...');
         
-        const messages = await channel.messages.fetch({ limit: 10 });
+        const channel = client.channels.cache.get(process.env.BACKUP_SEED_ID);
+        if (!channel) {
+            console.log('❌ Канал backup семян не найден');
+            return null;
+        }
+        
+        console.log(`✅ Канал найден: #${channel.name}`);
+        
+        const messages = await channel.messages.fetch({ limit: 5 });
+        console.log(`📨 Получено сообщений: ${messages.size}`);
+        
         const items = [];
         
-        for (const msg of messages.values()) {
-            // Проверяем что это embed от GH Stocks
+        for (const [msgId, msg] of messages) {
+            console.log(`\n--- Сообщение ${msgId} ---`);
+            console.log(`Автор: ${msg.author.username}`);
+            console.log(`Embed count: ${msg.embeds.length}`);
+            
             if (msg.embeds && msg.embeds.length > 0) {
                 const embed = msg.embeds[0];
                 
-                // Ищем поле с семенами
                 if (embed.fields) {
                     for (const field of embed.fields) {
+                        console.log(`Field name: ${field.name}`);
+                        console.log(`Field value: ${field.value}`);
+                        
                         if (field.name && field.name.includes('Seeds Stock')) {
                             const lines = field.value.split('\n');
                             
                             for (const line of lines) {
                                 const match = line.match(/(\w+)\s*x(\d+)/i);
                                 if (match) {
+                                    console.log(`✅ Найдено: ${match[1]} x${match[2]}`);
                                     items.push({
                                         name: match[1],
                                         count: parseInt(match[2])
@@ -304,9 +315,11 @@ async function parseBackupSeedChannel() {
             }
         }
         
+        console.log(`\n📊 Найдено предметов: ${items.length}`);
         return items.length ? items : null;
+        
     } catch (error) {
-        console.error('Ошибка парсинга backup семян:', error.message);
+        console.error('❌ Ошибка парсинга backup семян:', error);
         return null;
     }
 }
@@ -314,27 +327,43 @@ async function parseBackupSeedChannel() {
 // ===== ПАРСИНГ BACKUP БОТА (ГИР) =====
 async function parseBackupGearChannel() {
     try {
-        const channel = client.channels.cache.get(process.env.BACKUP_GEAR_ID);
-        if (!channel) return null;
+        console.log('\n🔍 Парсинг backup гира...');
         
-        const messages = await channel.messages.fetch({ limit: 10 });
+        const channel = client.channels.cache.get(process.env.BACKUP_GEAR_ID);
+        if (!channel) {
+            console.log('❌ Канал backup гира не найден');
+            return null;
+        }
+        
+        console.log(`✅ Канал найден: #${channel.name}`);
+        
+        const messages = await channel.messages.fetch({ limit: 5 });
+        console.log(`📨 Получено сообщений: ${messages.size}`);
+        
         const items = [];
         
-        for (const msg of messages.values()) {
+        for (const [msgId, msg] of messages) {
+            console.log(`\n--- Сообщение ${msgId} ---`);
+            console.log(`Автор: ${msg.author.username}`);
+            console.log(`Embed count: ${msg.embeds.length}`);
+            
             if (msg.embeds && msg.embeds.length > 0) {
                 const embed = msg.embeds[0];
                 
-                // Ищем поле "Gears Stock" (может быть с/без s)
                 if (embed.fields) {
                     for (const field of embed.fields) {
+                        console.log(`Field name: ${field.name}`);
+                        console.log(`Field value: ${field.value}`);
+                        
                         if (field.name && field.name.toLowerCase().includes('gear stock')) {
                             const lines = field.value.split('\n');
                             
                             for (const line of lines) {
-                                // Убираем эмодзи в начале
+                                // Убираем эмодзи
                                 const cleanLine = line.replace(/[^\w\s]/g, '').trim();
                                 const match = cleanLine.match(/([\w\s]+)\s*x(\d+)/i);
                                 if (match) {
+                                    console.log(`✅ Найдено: ${match[1].trim()} x${match[2]}`);
                                     items.push({
                                         name: match[1].trim(),
                                         count: parseInt(match[2])
@@ -347,9 +376,11 @@ async function parseBackupGearChannel() {
             }
         }
         
+        console.log(`\n📊 Найдено предметов: ${items.length}`);
         return items.length ? items : null;
+        
     } catch (error) {
-        console.error('Ошибка парсинга backup гира:', error.message);
+        console.error('❌ Ошибка парсинга backup гира:', error);
         return null;
     }
 }
@@ -525,7 +556,6 @@ async function checkAll() {
             changed = true;
         }
     } else {
-        // Если нет семян, но раньше были - очищаем
         if (stockData.seeds.length > 0) {
             stockData.seeds = [];
             changed = true;
@@ -574,6 +604,11 @@ async function checkAll() {
 client.on('ready', async () => {
     console.log(`✅ Залогинен как ${client.user.tag}`);
     
+    console.log('\n📋 СПИСОК ТВОИХ СЕРВЕРОВ:');
+    client.guilds.cache.forEach(guild => {
+        console.log(`🔹 "${guild.name}" (ID: ${guild.id})`);
+    });
+    
     await loadState();
     await checkAll();
     
@@ -583,8 +618,6 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
-
-
 
 
 
