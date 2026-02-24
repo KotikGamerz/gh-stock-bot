@@ -3,8 +3,9 @@ const { Client } = require('discord.js-selfbot-v13');
 const axios = require('axios');
 const { fetch } = require('undici');
 const fs = require('fs').promises;
-
 const express = require('express');
+
+// ===== Express сервер для Render =====
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -15,6 +16,7 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`✅ Web server running on port ${port}`);
 });
+// ======================================
 
 const client = new Client();
 
@@ -61,7 +63,9 @@ let stockData = {
     gear: [],
     weather: null,
     lastUpdate: null,
-    messageId: null
+    messageId: null,
+    source: 'official', // official или backup
+    downNotified: false
 };
 
 // ===== ЗАГРУЗКА/СОХРАНЕНИЕ СОСТОЯНИЯ =====
@@ -124,8 +128,8 @@ function extractTextFromComponents(components) {
     return text;
 }
 
-// ===== ПАРСИНГ КАНАЛА С СЕМЕНАМИ =====
-async function parseSeedChannel() {
+// ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (СЕМЕНА) =====
+async function parseOfficialSeedChannel() {
     try {
         const channel = client.channels.cache.get(process.env.SEED_CHANNEL_ID);
         if (!channel) return null;
@@ -158,13 +162,13 @@ async function parseSeedChannel() {
         
         return items.length ? items : null;
     } catch (error) {
-        console.error('Ошибка парсинга семян:', error.message);
+        console.error('Ошибка парсинга официальных семян:', error.message);
         return null;
     }
 }
 
-// ===== ПАРСИНГ КАНАЛА С ГИРОМ =====
-async function parseGearChannel() {
+// ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ГИР) =====
+async function parseOfficialGearChannel() {
     try {
         const channel = client.channels.cache.get(process.env.GEAR_CHANNEL_ID);
         if (!channel) return null;
@@ -197,13 +201,13 @@ async function parseGearChannel() {
         
         return items.length ? items : null;
     } catch (error) {
-        console.error('Ошибка парсинга гира:', error.message);
+        console.error('Ошибка парсинга официального гира:', error.message);
         return null;
     }
 }
 
-// ===== ПАРСИНГ КАНАЛА С ПОГОДОЙ =====
-async function parseWeatherChannel() {
+// ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ПОГОДА) =====
+async function parseOfficialWeatherChannel() {
     try {
         const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
         if (!channel) return null;
@@ -234,6 +238,81 @@ async function parseWeatherChannel() {
     }
 }
 
+// ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
+async function parseBackupSeedChannel() {
+    try {
+        const channel = client.channels.cache.get(process.env.BACKUP_SEED_ID);
+        if (!channel) return null;
+        
+        const messages = await channel.messages.fetch({ limit: 5 });
+        
+        for (const msg of messages.values()) {
+            // Ищем embed с семенами
+            if (msg.embeds && msg.embeds.length > 0) {
+                const embed = msg.embeds[0];
+                if (embed.description && embed.description.includes('Seeds Stock')) {
+                    const lines = embed.description.split('\n');
+                    const items = [];
+                    
+                    for (const line of lines) {
+                        // Парсим "Carrot - x16" -> name: Carrot, count: 16
+                        const match = line.match(/(\w+)\s*-\s*x?(\d+)/i);
+                        if (match) {
+                            items.push({
+                                name: match[1],
+                                count: parseInt(match[2])
+                                // roleId нет - это backup режим
+                            });
+                        }
+                    }
+                    
+                    return items.length ? items : null;
+                }
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Ошибка парсинга backup семян:', error.message);
+        return null;
+    }
+}
+
+// ===== ПАРСИНГ BACKUP БОТА (ГИР) =====
+async function parseBackupGearChannel() {
+    try {
+        const channel = client.channels.cache.get(process.env.BACKUP_GEAR_ID);
+        if (!channel) return null;
+        
+        const messages = await channel.messages.fetch({ limit: 5 });
+        
+        for (const msg of messages.values()) {
+            if (msg.embeds && msg.embeds.length > 0) {
+                const embed = msg.embeds[0];
+                if (embed.description && embed.description.includes('Gear Stock')) {
+                    const lines = embed.description.split('\n');
+                    const items = [];
+                    
+                    for (const line of lines) {
+                        const match = line.match(/([\w\s]+)\s*-\s*x?(\d+)/i);
+                        if (match) {
+                            items.push({
+                                name: match[1].trim(),
+                                count: parseInt(match[2])
+                            });
+                        }
+                    }
+                    
+                    return items.length ? items : null;
+                }
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Ошибка парсинга backup гира:', error.message);
+        return null;
+    }
+}
+
 // ===== ОТПРАВКА В DISCORD =====
 async function sendToDiscord() {
     if (!stockData.seeds.length && !stockData.gear.length && !stockData.weather) {
@@ -246,32 +325,22 @@ async function sendToDiscord() {
     
     let pingText = '';
     
-    if (!myGuild) {
-        console.log('❌ Сервер не найден! Использую текст без пингов');
-        for (const item of stockData.gear) pingText += `@${item.name} `;
-        for (const item of stockData.seeds) pingText += `@${item.name} `;
-    } else {
-        console.log(`✅ Сервер найден: ${myGuild.name}`);
-        // Гир
+    // Пинги делаем ТОЛЬКО в official режиме
+    if (stockData.source === 'official' && myGuild) {
         for (const item of stockData.gear) {
-            const myRole = myGuild.roles.cache.find(r => r.name === item.name);
-            if (myRole) {
-                pingText += `<@&${myRole.id}> `;
-                console.log(`✅ Найдена роль: ${item.name}`);
-            } else {
-                pingText += `@${item.name} `;
-                console.log(`❌ Нет роли: ${item.name}`);
+            if (item.roleId) {
+                const myRole = myGuild.roles.cache.find(r => r.name === item.name);
+                if (myRole) {
+                    pingText += `<@&${myRole.id}> `;
+                }
             }
         }
-        // Семена
         for (const item of stockData.seeds) {
-            const myRole = myGuild.roles.cache.find(r => r.name === item.name);
-            if (myRole) {
-                pingText += `<@&${myRole.id}> `;
-                console.log(`✅ Найдена роль: ${item.name}`);
-            } else {
-                pingText += `@${item.name} `;
-                console.log(`❌ Нет роли: ${item.name}`);
+            if (item.roleId) {
+                const myRole = myGuild.roles.cache.find(r => r.name === item.name);
+                if (myRole) {
+                    pingText += `<@&${myRole.id}> `;
+                }
             }
         }
     }
@@ -304,8 +373,8 @@ async function sendToDiscord() {
         });
     }
     
-    // Погода
-    if (stockData.weather) {
+    // Погода (только если есть и это official режим)
+    if (stockData.weather && stockData.source === 'official') {
         const weather = stockData.weather;
         const weatherEmoji = EMOJIS[weather.weather] || '☁️';
         
@@ -331,6 +400,12 @@ async function sendToDiscord() {
         });
     }
     
+    // Добавляем текст о backup режиме если нужно
+    let footerText = `Last update: ${new Date().toLocaleTimeString()} UTC`;
+    if (stockData.source === 'backup') {
+        footerText += ' ⚠️ Backup mode';
+    }
+    
     const message = {
         content: pingText.trim(),
         embeds: [{
@@ -338,11 +413,20 @@ async function sendToDiscord() {
             color: 0x00FF00,
             fields: fields,
             footer: {
-                text: `Last update: ${new Date().toLocaleTimeString()} UTC`
+                text: footerText
             },
             timestamp: new Date().toISOString()
         }]
     };
+    
+    // В backup режиме добавляем предупреждение внизу
+    if (stockData.source === 'backup') {
+        message.embeds[0].fields.push({
+            name: '⚠️ Backup Mode',
+            value: 'Bot is running in backup mode. Some information (weather, role pings) may be missing.',
+            inline: false
+        });
+    }
     
     try {
         if (stockData.messageId) {
@@ -350,12 +434,12 @@ async function sendToDiscord() {
                 `${process.env.TARGET_WEBHOOK_URL}/messages/${stockData.messageId}`,
                 message
             );
-            console.log('✏️ Сообщение обновлено');
+            console.log(`✏️ Сообщение обновлено (${stockData.source} mode)`);
         } else {
             const response = await axios.post(process.env.TARGET_WEBHOOK_URL, message);
             stockData.messageId = response.data.id;
             await saveState();
-            console.log('📨 Новое сообщение создано');
+            console.log(`📨 Новое сообщение создано (${stockData.source} mode)`);
         }
     } catch (error) {
         console.error('❌ Ошибка отправки:', error.message);
@@ -370,17 +454,26 @@ async function sendToDiscord() {
 async function checkAll() {
     console.log(`\n🕒 ${new Date().toLocaleTimeString()} - Проверка...`);
     
-    const [newSeeds, newGear, newWeather] = await Promise.all([
-        parseSeedChannel(),
-        parseGearChannel(),
-        parseWeatherChannel()
-    ]);
+    // 1️⃣ Сначала проверяем официального бота
+    let newSeeds = await parseOfficialSeedChannel();
+    let newGear = await parseOfficialGearChannel();
+    let newWeather = await parseOfficialWeatherChannel();
+    let source = 'official';
+    
+    // 2️⃣ Если официальный бот не работает, проверяем backup
+    if (!newSeeds && !newGear) {
+        console.log('⚠️ Официальный бот молчит, пробую backup...');
+        newSeeds = await parseBackupSeedChannel();
+        newGear = await parseBackupGearChannel();
+        newWeather = null; // в backup режиме погоды нет
+        source = 'backup';
+    }
     
     let changed = false;
     
     if (newSeeds) {
         if (JSON.stringify(newSeeds) !== JSON.stringify(stockData.seeds)) {
-            console.log('🔄 Семена изменились');
+            console.log(`🔄 Семена изменились (${source} mode)`);
             stockData.seeds = newSeeds;
             changed = true;
         }
@@ -388,26 +481,33 @@ async function checkAll() {
     
     if (newGear) {
         if (JSON.stringify(newGear) !== JSON.stringify(stockData.gear)) {
-            console.log('🔄 Гир изменился');
+            console.log(`🔄 Гир изменился (${source} mode)`);
             stockData.gear = newGear;
             changed = true;
         }
     }
     
-    if (newWeather) {
+    if (newWeather && source === 'official') {
         if (JSON.stringify(newWeather) !== JSON.stringify(stockData.weather)) {
             console.log('🔄 Погода изменилась');
             stockData.weather = newWeather;
             changed = true;
         }
+    } else if (source === 'backup') {
+        // В backup режиме очищаем погоду
+        if (stockData.weather) {
+            stockData.weather = null;
+            changed = true;
+        }
     }
     
     if (changed) {
+        stockData.source = source;
         stockData.lastUpdate = new Date().toISOString();
         await saveState();
         await sendToDiscord();
     } else {
-        console.log('⏺️ Без изменений');
+        console.log(`⏺️ Без изменений (${source} mode)`);
     }
 }
 
@@ -423,5 +523,5 @@ client.on('ready', async () => {
     console.log('👀 Бот запущен и следит за каналами');
 });
 
-
 client.login(process.env.USER_TOKEN);
+
