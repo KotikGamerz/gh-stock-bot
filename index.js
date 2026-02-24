@@ -276,7 +276,11 @@ async function parseBackupSeedChannel() {
             return null;
         }
         
+        console.log(`✅ Канал найден: #${channel.name}`);
+        
         const messages = await channel.messages.fetch({ limit: 5 });
+        console.log(`📨 Получено сообщений: ${messages.size}`);
+        
         const items = [];
         
         for (const msg of messages.values()) {
@@ -288,11 +292,12 @@ async function parseBackupSeedChannel() {
                     const lines = embed.description.split('\n');
                     
                     for (const line of lines) {
-                        // Убираем эмодзи в начале (• 🥕 Carrot x17)
+                        // Убираем эмодзи и спецсимволы
                         const cleanLine = line.replace(/[•\s]/g, '').trim();
                         const match = cleanLine.match(/(\w+)\s*x(\d+)/i);
                         
                         if (match) {
+                            console.log(`✅ Найдено: ${match[1]} x${match[2]}`);
                             items.push({
                                 name: match[1],
                                 count: parseInt(match[2])
@@ -303,14 +308,14 @@ async function parseBackupSeedChannel() {
             }
         }
         
-        // Берём самое свежее сообщение (первое в списке)
+        console.log(`📊 Найдено предметов: ${items.length}`);
         return items.length ? items : null;
         
     } catch (error) {
         console.error('❌ Ошибка парсинга backup семян:', error);
         return null;
     }
-}    
+}
 
 // ===== ПАРСИНГ BACKUP БОТА (ГИР) =====
 async function parseBackupGearChannel() {
@@ -323,7 +328,11 @@ async function parseBackupGearChannel() {
             return null;
         }
         
+        console.log(`✅ Канал найден: #${channel.name}`);
+        
         const messages = await channel.messages.fetch({ limit: 5 });
+        console.log(`📨 Получено сообщений: ${messages.size}`);
+        
         const items = [];
         
         for (const msg of messages.values()) {
@@ -334,13 +343,13 @@ async function parseBackupGearChannel() {
                     const lines = embed.description.split('\n');
                     
                     for (const line of lines) {
-                        // Пример: • 💧 Watering Can x5
-                        const cleanLine = line.replace(/[•\s]/g, '').trim();
                         // Убираем эмодзи в начале
+                        const cleanLine = line.replace(/[•\s]/g, '').trim();
                         const withoutEmoji = cleanLine.replace(/[^\w\s]/g, '').trim();
                         const match = withoutEmoji.match(/([\w\s]+)\s*x(\d+)/i);
                         
                         if (match) {
+                            console.log(`✅ Найдено: ${match[1].trim()} x${match[2]}`);
                             items.push({
                                 name: match[1].trim(),
                                 count: parseInt(match[2])
@@ -351,6 +360,7 @@ async function parseBackupGearChannel() {
             }
         }
         
+        console.log(`📊 Найдено предметов: ${items.length}`);
         return items.length ? items : null;
         
     } catch (error) {
@@ -592,8 +602,3 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
-
-
-
-
-
