@@ -1,45 +1,59 @@
 require('dotenv').config();
 // ===== ЖЁСТКАЯ ДИАГНОСТИКА =====
-// ===== ЖЁСТКАЯ ДИАГНОСТИКА =====
 console.log('🔥 ЖЁСТКАЯ ДИАГНОСТИКА');
 console.log('1. Переменные окружения:');
 console.log('USER_TOKEN exists:', !!process.env.USER_TOKEN);
 console.log('USER_TOKEN length:', process.env.USER_TOKEN?.length);
 console.log('USER_TOKEN starts with:', process.env.USER_TOKEN?.substring(0, 5));
 
-// НЕ создаём нового Client, просто проверим сам токен
-const { fetch } = require('undici');
+// Используем https вместо undici чтобы избежать конфликтов
+const https = require('https');
 
-async function testToken() {
-    try {
-        console.log('2. Проверяю токен через API...');
-        const response = await fetch('https://discord.com/api/v9/users/@me', {
-            headers: {
-                'Authorization': process.env.USER_TOKEN
-            }
+function testToken() {
+    console.log('2. Проверяю токен через API...');
+    
+    const options = {
+        hostname: 'discord.com',
+        path: '/api/v9/users/@me',
+        method: 'GET',
+        headers: {
+            'Authorization': process.env.USER_TOKEN
+        }
+    };
+    
+    const req = https.get(options, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+            data += chunk;
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            console.log('✅ Токен рабочий!');
-            console.log('Аккаунт:', data.username);
-            console.log('ID:', data.id);
-        } else {
-            console.log('❌ Токен НЕ работает!');
-            console.log('Статус:', response.status);
-            console.log('Статус текст:', response.statusText);
-        }
-    } catch (error) {
-        console.log('❌ Ошибка при проверке токена:', error.message);
-    }
+        res.on('end', () => {
+            if (res.statusCode === 200) {
+                try {
+                    const user = JSON.parse(data);
+                    console.log('✅ ТОКЕН РАБОЧИЙ!');
+                    console.log('👤 Аккаунт:', user.username);
+                    console.log('🆔 ID:', user.id);
+                } catch (e) {
+                    console.log('❌ Ошибка парсинга ответа');
+                }
+            } else {
+                console.log('❌ ТОКЕН НЕ РАБОТАЕТ!');
+                console.log('📊 Статус:', res.statusCode);
+                console.log('📝 Ответ:', data);
+            }
+        });
+    });
+    
+    req.on('error', (error) => {
+        console.log('❌ Ошибка запроса:', error.message);
+    });
+    
+    req.end();
 }
 
 testToken();
-const { Client } = require('discord.js-selfbot-v13');
-const axios = require('axios');
-const { fetch } = require('undici');
-const fs = require('fs').promises;
-const express = require('express');
 
 // ===== ДИАГНОСТИКА =====
 console.log('🚀 Бот запускается...');
@@ -473,6 +487,7 @@ client.login(process.env.USER_TOKEN).catch(error => {
 });
 
   
+
 
 
 
