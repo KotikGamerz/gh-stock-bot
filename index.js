@@ -19,6 +19,7 @@ app.listen(port, () => {
 // ======================================
 
 const client = new Client();
+const MAX_CACHE_SIZE = 100; 
 
 // Эмодзи для всего
 const EMOJIS = {
@@ -83,28 +84,40 @@ async function saveState() {
     await fs.writeFile('state.json', JSON.stringify(stockData, null, 2));
 }
 
-// ===== ПОИСК РОЛИ НА ВСЕХ СЕРВЕРАХ =====
+// ===== ПОИСК РОЛИ НА ВСЕХ СЕРВЕРАХ (С ЗАЩИТОЙ ОТ УТЕЧЕК) =====
 async function findRoleName(roleId) {
+    // Защита от утечки памяти - чистим кэш если он слишком большой
+    if (roleNameCache.size > 100) {
+        console.log('🧹 Кэш ролей слишком большой, очищаем...');
+        roleNameCache.clear();
+    }
+    
+    // Проверяем кэш
     if (roleNameCache.has(roleId)) {
         return roleNameCache.get(roleId);
     }
     
     console.log(`🔍 Ищу роль ${roleId}...`);
     
+    // Перебираем все серверы где есть аккаунт
     for (const [guildId, guild] of client.guilds.cache) {
         try {
+            // Пытаемся получить роль по ID
             const role = await guild.roles.fetch(roleId);
             if (role) {
                 console.log(`✅ Нашёл: ${role.name} на сервере ${guild.name}`);
+                // Сохраняем в кэш
                 roleNameCache.set(roleId, role.name);
                 return role.name;
             }
         } catch (error) {
-            // Игнорируем
+            // Игнорируем ошибки (роль может быть не на этом сервере)
+            // console.log(`❌ Ошибка на сервере ${guild.name}:`, error.message);
         }
     }
     
-    console.log(`❌ Роль ${roleId} не найдена`);
+    console.log(`❌ Роль ${roleId} не найдена ни на одном сервере`);
+    // Сохраняем null чтобы не искать снова
     roleNameCache.set(roleId, null);
     return null;
 }
@@ -593,5 +606,22 @@ client.on('ready', async () => {
     console.log('👀 Бот запущен и следит за каналами');
 });
 
+// ===== АВТОМАТИЧЕСКАЯ ЧИСТКА ПАМЯТИ =====
+setInterval(() => {
+    console.log('🧹 Плановая чистка кэша ролей');
+    roleNameCache.clear();
+    
+    // Попытка вызвать сборщик мусора (если запущено с флагом --expose-gc)
+    try {
+        if (global.gc) {
+            global.gc();
+            console.log('✅ Сборщик мусора вызван');
+        }
+    } catch (e) {
+        // Игнорируем
+    }
+}, 60 * 60 * 1000); // Каждый час
+
 client.login(process.env.USER_TOKEN);
+
 
