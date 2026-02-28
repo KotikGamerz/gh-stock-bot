@@ -22,7 +22,6 @@ client.login(process.env.USER_TOKEN).catch(err => {
     process.exit(1);
 });
 
-  
 
 
 
