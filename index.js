@@ -85,27 +85,12 @@ async function saveState() {
 
 // ===== ПОИСК РОЛИ НА ВСЕХ СЕРВЕРАХ =====
 async function findRoleName(roleId) {
-    if (roleNameCache.has(roleId)) {
-        return roleNameCache.get(roleId);
-    }
-    
-    console.log(`🔍 Ищу роль ${roleId}...`);
-    
-    for (const [guildId, guild] of client.guilds.cache) {
-        try {
-            const role = await guild.roles.fetch(roleId);
-            if (role) {
-                console.log(`✅ Нашёл: ${role.name} на сервере ${guild.name}`);
-                roleNameCache.set(roleId, role.name);
-                return role.name;
-            }
-        } catch (error) {
-            // Игнорируем
+    for (const [, guild] of client.guilds.cache) {
+        const role = guild.roles.cache.get(roleId);
+        if (role) {
+            return role.name;
         }
     }
-    
-    console.log(`❌ Роль ${roleId} не найдена`);
-    roleNameCache.set(roleId, null);
     return null;
 }
 
@@ -594,3 +579,4 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
