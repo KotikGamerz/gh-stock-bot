@@ -19,7 +19,11 @@ app.listen(port, () => {
 // ======================================
 
 const client = new Client();
-const MAX_CACHE_SIZE = 100; 
+
+// ===== КОНСТАНТЫ =====
+const MAX_CACHE_SIZE = 100; // Максимальный размер кэша ролей
+const CHECK_INTERVAL = 30 * 1000; // 30 секунд
+const MEMORY_CLEAN_INTERVAL = 30 * 60 * 1000; // 30 минут
 
 // Эмодзи для всего
 const EMOJIS = {
@@ -56,7 +60,7 @@ const EMOJIS = {
 };
 
 // Кэш для имён ролей
-const roleNameCache = new Map();
+let roleNameCache = new Map();
 
 // Хранилище данных
 let stockData = {
@@ -73,7 +77,16 @@ let stockData = {
 async function loadState() {
     try {
         const data = await fs.readFile('state.json', 'utf8');
-        stockData = JSON.parse(data);
+        const saved = JSON.parse(data);
+        stockData = {
+            seeds: saved.seeds || [],
+            gear: saved.gear || [],
+            weather: saved.weather || null,
+            lastUpdate: saved.lastUpdate || null,
+            messageId: saved.messageId || null,
+            source: saved.source || 'official',
+            downNotified: saved.downNotified || false
+        };
         console.log('📂 Загружено состояние');
     } catch (error) {
         console.log('🆕 Новое состояние');
@@ -81,45 +94,50 @@ async function loadState() {
 }
 
 async function saveState() {
-    await fs.writeFile('state.json', JSON.stringify(stockData, null, 2));
+    try {
+        await fs.writeFile('state.json', JSON.stringify(stockData, null, 2));
+    } catch (error) {
+        console.error('❌ Ошибка сохранения:', error.message);
+    }
 }
 
-// ===== ПОИСК РОЛИ НА ВСЕХ СЕРВЕРАХ (С ЗАЩИТОЙ ОТ УТЕЧЕК) =====
+// ===== ПОИСК РОЛИ С ЗАЩИТОЙ ОТ УТЕЧЕК =====
 async function findRoleName(roleId) {
-    // Защита от утечки памяти - чистим кэш если он слишком большой
-    if (roleNameCache.size > 100) {
-        console.log('🧹 Кэш ролей слишком большой, очищаем...');
-        roleNameCache.clear();
-    }
-    
-    // Проверяем кэш
-    if (roleNameCache.has(roleId)) {
-        return roleNameCache.get(roleId);
-    }
-    
-    console.log(`🔍 Ищу роль ${roleId}...`);
-    
-    // Перебираем все серверы где есть аккаунт
-    for (const [guildId, guild] of client.guilds.cache) {
-        try {
-            // Пытаемся получить роль по ID
-            const role = await guild.roles.fetch(roleId);
-            if (role) {
-                console.log(`✅ Нашёл: ${role.name} на сервере ${guild.name}`);
-                // Сохраняем в кэш
-                roleNameCache.set(roleId, role.name);
-                return role.name;
-            }
-        } catch (error) {
-            // Игнорируем ошибки (роль может быть не на этом сервере)
-            // console.log(`❌ Ошибка на сервере ${guild.name}:`, error.message);
+    try {
+        // Защита от утечки памяти
+        if (roleNameCache.size > MAX_CACHE_SIZE) {
+            console.log('🧹 Кэш ролей слишком большой, очищаем...');
+            roleNameCache.clear();
         }
+        
+        // Проверяем кэш
+        if (roleNameCache.has(roleId)) {
+            return roleNameCache.get(roleId);
+        }
+        
+        console.log(`🔍 Ищу роль ${roleId}...`);
+        
+        // Перебираем все серверы
+        for (const [guildId, guild] of client.guilds.cache) {
+            try {
+                const role = await guild.roles.fetch(roleId);
+                if (role) {
+                    console.log(`✅ Нашёл: ${role.name} на сервере ${guild.name}`);
+                    roleNameCache.set(roleId, role.name);
+                    return role.name;
+                }
+            } catch (error) {
+                // Игнорируем ошибки
+            }
+        }
+        
+        console.log(`❌ Роль ${roleId} не найдена`);
+        roleNameCache.set(roleId, null);
+        return null;
+    } catch (error) {
+        console.error('❌ Ошибка в findRoleName:', error.message);
+        return null;
     }
-    
-    console.log(`❌ Роль ${roleId} не найдена ни на одном сервере`);
-    // Сохраняем null чтобы не искать снова
-    roleNameCache.set(roleId, null);
-    return null;
 }
 
 // ===== ПАРСИНГ КОМПОНЕНТОВ =====
@@ -200,7 +218,6 @@ async function parseOfficialGearChannel() {
         
         if (!msg || !msg.components.length) return null;
         
-        // Проверка на свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
         const maxAge = 5 * 60 * 1000;
         
@@ -248,7 +265,6 @@ async function parseOfficialWeatherChannel() {
         
         if (!msg || !msg.components.length) return null;
         
-        // Проверка на свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
         const maxAge = 5 * 60 * 1000;
         
@@ -281,21 +297,13 @@ async function parseOfficialWeatherChannel() {
 // ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
 async function parseBackupSeedChannel() {
     try {
-        console.log('\n🔍 Парсинг backup семян...');
-        
         const channel = client.channels.cache.get(process.env.BACKUP_SEED_ID);
-        if (!channel) {
-            console.log('❌ Канал backup семян не найден');
-            return null;
-        }
+        if (!channel) return null;
         
-        const messages = await channel.messages.fetch({ limit: 1 }); // БЕРЁМ ТОЛЬКО 1
+        const messages = await channel.messages.fetch({ limit: 1 });
         const msg = messages.first();
         
-        if (!msg || !msg.embeds || !msg.embeds.length) {
-            console.log('❌ Нет embed в последнем сообщении');
-            return null;
-        }
+        if (!msg || !msg.embeds || !msg.embeds.length) return null;
         
         const embed = msg.embeds[0];
         const items = [];
@@ -304,46 +312,33 @@ async function parseBackupSeedChannel() {
             const lines = embed.description.split('\n');
             
             for (const line of lines) {
-                // Убираем эмодзи и спецсимволы
-                const cleanLine = line.replace(/[•\s]/g, '').trim();
-                const match = cleanLine.match(/(\w+)\s*x(\d+)/i);
-                
+                const match = line.match(/-?\s*([\w\s]+?)\s*x(\d+)/i);
                 if (match) {
                     items.push({
-                        name: match[1],
+                        name: match[1].trim(),
                         count: parseInt(match[2])
                     });
                 }
             }
         }
         
-        console.log(`📊 Найдено предметов: ${items.length}`);
         return items.length ? items : null;
-        
     } catch (error) {
-        console.error('❌ Ошибка парсинга backup семян:', error);
+        console.error('Ошибка парсинга backup семян:', error.message);
         return null;
     }
 }
 
-// ===== ПАРСИНГ BACKUP БОТА (ГИР) ======
+// ===== ПАРСИНГ BACKUP БОТА (ГИР) =====
 async function parseBackupGearChannel() {
     try {
-        console.log('\n🔍 Парсинг backup гира...');
-        
         const channel = client.channels.cache.get(process.env.BACKUP_GEAR_ID);
-        if (!channel) {
-            console.log('❌ Канал backup гира не найден');
-            return null;
-        }
+        if (!channel) return null;
         
-        const messages = await channel.messages.fetch({ limit: 1 }); // ТОЛЬКО 1
+        const messages = await channel.messages.fetch({ limit: 1 });
         const msg = messages.first();
         
-        if (!msg || !msg.embeds || !msg.embeds.length) {
-            console.log('❌ Нет embed в последнем сообщении');
-            return null;
-        }
+        if (!msg || !msg.embeds || !msg.embeds.length) return null;
         
         const embed = msg.embeds[0];
         const items = [];
@@ -365,132 +360,137 @@ async function parseBackupGearChannel() {
             }
         }
         
-        console.log(`📊 Найдено предметов: ${items.length}`);
         return items.length ? items : null;
-        
     } catch (error) {
-        console.error('❌ Ошибка парсинга backup гира:', error);
+        console.error('Ошибка парсинга backup гира:', error.message);
         return null;
     }
 }
 
 // ===== ОТПРАВКА В DISCORD =====
 async function sendToDiscord() {
-    if (!stockData.seeds.length && !stockData.gear.length && !stockData.weather) {
-        console.log('⏳ Нет данных для отправки');
-        return;
-    }
-    
-    // ТВОЙ СЕРВЕР ПО ID
-    const myGuild = client.guilds.cache.get('1253393202053124281');
-    
-    let pingText = '';
-    
-    // Пинги делаем ТОЛЬКО в official режиме
-    if (stockData.source === 'official' && myGuild) {
-        for (const item of stockData.gear) {
-            if (item.roleId) {
-                const myRole = myGuild.roles.cache.find(r => r.name === item.name);
-                if (myRole) {
-                    pingText += `<@&${myRole.id}> `;
-                }
-            }
-        }
-        for (const item of stockData.seeds) {
-            if (item.roleId) {
-                const myRole = myGuild.roles.cache.find(r => r.name === item.name);
-                if (myRole) {
-                    pingText += `<@&${myRole.id}> `;
-                }
-            }
-        }
-    }
-    
-    const fields = [];
-    
-    // Семена
-    if (stockData.seeds.length) {
-        const seedText = stockData.seeds
-            .map(item => `• ${item.name} ${EMOJIS[item.name] || ''} — ${item.count}`)
-            .join('\n');
-        
-        fields.push({
-            name: '🌾 SEEDS',
-            value: seedText,
-            inline: false
-        });
-    }
-    
-    // Гир
-    if (stockData.gear.length) {
-        const gearText = stockData.gear
-            .map(item => `• ${item.name} ${EMOJIS[item.name] || ''} — ${item.count}`)
-            .join('\n');
-        
-        fields.push({
-            name: '⚙️ GEAR',
-            value: gearText,
-            inline: false
-        });
-    }
-    
-    // Погода (только если есть и это official режим)
-    if (stockData.weather && stockData.source === 'official') {
-        const weather = stockData.weather;
-        const weatherEmoji = EMOJIS[weather.weather] || '☁️';
-        
-        let timeLeft = '';
-        if (weather.endTime) {
-            const now = new Date();
-            const [hours, minutes] = weather.endTime.split(':').map(Number);
-            const end = new Date();
-            end.setHours(hours, minutes, 0);
-            
-            if (end < now) {
-                end.setDate(end.getDate() + 1);
-            }
-            
-            const minsLeft = Math.round((end - now) / 60000);
-            timeLeft = ` (${minsLeft} min left)`;
-        }
-        
-        fields.push({
-            name: '☁️ WEATHER',
-            value: `• ${weather.weather} ${weatherEmoji}\n• Started: ${weather.startTime || '??'}\n• Ends: ${weather.endTime || '??'}${timeLeft}`,
-            inline: false
-        });
-    }
-    
-    // Добавляем текст о backup режиме если нужно
-    let footerText = `Last update: ${new Date().toLocaleTimeString()} UTC`;
-    if (stockData.source === 'backup') {
-        footerText += ' ⚠️ Backup mode';
-    }
-    
-    const message = {
-        content: pingText.trim(),
-        embeds: [{
-            title: '🌱 GARDEN HORIZONS | STOCK',
-            color: 0x00FF00,
-            fields: fields,
-            footer: {
-                text: footerText
-            },
-            timestamp: new Date().toISOString()
-        }]
-    };
-    
-    // В backup режиме добавляем предупреждение внизу
-    if (stockData.source === 'backup') {
-        message.embeds[0].fields.push({
-            name: '⚠️ Backup Mode',
-            value: 'Bot is running in backup mode. Some information (weather, role pings) may be missing.',
-            inline: false
-        });
-    }
-    
     try {
+        if (!stockData.seeds.length && !stockData.gear.length && !stockData.weather) {
+            console.log('⏳ Нет данных для отправки');
+            return;
+        }
+        
+        const myGuild = client.guilds.cache.get(process.env.GUILD_ID);
+        
+        let pingText = '';
+        
+        if (stockData.source === 'official' && myGuild) {
+            for (const item of stockData.gear) {
+                if (item.roleId) {
+                    const myRole = myGuild.roles.cache.find(r => r.name === item.name);
+                    if (myRole) {
+                        pingText += `<@&${myRole.id}> `;
+                    }
+                }
+            }
+            for (const item of stockData.seeds) {
+                if (item.roleId) {
+                    const myRole = myGuild.roles.cache.find(r => r.name === item.name);
+                    if (myRole) {
+                        pingText += `<@&${myRole.id}> `;
+                    }
+                }
+            }
+        }
+        
+        const fields = [];
+        
+        if (stockData.seeds.length) {
+            const seedText = stockData.seeds
+                .map(item => `• ${item.name} ${EMOJIS[item.name] || ''} — ${item.count}`)
+                .join('\n');
+            
+            fields.push({
+                name: '🌾 SEEDS',
+                value: seedText,
+                inline: false
+            });
+        }
+        
+        if (stockData.gear.length) {
+            const gearText = stockData.gear
+                .map(item => `• ${item.name} ${EMOJIS[item.name] || ''} — ${item.count}`)
+                .join('\n');
+            
+            fields.push({
+                name: '⚙️ GEAR',
+                value: gearText,
+                inline: false
+            });
+        }
+        
+        if (stockData.weather && stockData.source === 'official') {
+            const weather = stockData.weather;
+            const weatherEmoji = EMOJIS[weather.weather] || '☁️';
+            
+            let timeLeft = '';
+            if (weather.endTime) {
+                const now = new Date();
+                const [hours, minutes] = weather.endTime.split(':').map(Number);
+                const end = new Date();
+                end.setHours(hours, minutes, 0);
+                
+                if (end < now) {
+                    end.setDate(end.getDate() + 1);
+                }
+                
+                const minsLeft = Math.round((end - now) / 60000);
+                timeLeft = ` (${minsLeft} min left)`;
+            }
+            
+            fields.push({
+                name: '☁️ WEATHER',
+                value: `• ${weather.weather} ${weatherEmoji}\n• Started: ${weather.startTime || '??'}\n• Ends: ${weather.endTime || '??'}${timeLeft}`,
+                inline: false
+            });
+        }
+        
+        let footerText = `Last update: ${new Date().toLocaleTimeString()} UTC`;
+        if (stockData.source === 'backup') {
+            footerText += ' ⚠️ Backup mode';
+        }
+        
+        const message = {
+            content: pingText.trim() || undefined,
+            embeds: [{
+                title: '🌱 GARDEN HORIZONS | STOCK',
+                color: 0x00FF00,
+                fields: fields,
+                footer: {
+                    text: footerText
+                },
+                timestamp: new Date().toISOString()
+            }]
+        };
+        
+        if (stockData.source === 'backup') {
+            message.embeds[0].fields.push({
+                name: '⚠️ Backup Mode',
+                value: 'Bot is running in backup mode. Some information (weather, role pings) may be missing.',
+                inline: false
+            });
+        }
+        
+        // Проверяем существует ли сообщение
+        let messageExists = true;
         if (stockData.messageId) {
+            try {
+                await axios.get(`${process.env.TARGET_WEBHOOK_URL}/messages/${stockData.messageId}`);
+            } catch (error) {
+                if (error.response?.status === 404) {
+                    messageExists = false;
+                    stockData.messageId = null;
+                    await saveState();
+                }
+            }
+        }
+        
+        if (stockData.messageId && messageExists) {
             await axios.patch(
                 `${process.env.TARGET_WEBHOOK_URL}/messages/${stockData.messageId}`,
                 message
@@ -504,88 +504,83 @@ async function sendToDiscord() {
         }
     } catch (error) {
         console.error('❌ Ошибка отправки:', error.message);
-        if (error.response?.status === 404) {
-            stockData.messageId = null;
-            await saveState();
-        }
     }
 }
 
 // ===== ОСНОВНАЯ ПРОВЕРКА =====
 async function checkAll() {
-    console.log(`\n🕒 ${new Date().toLocaleTimeString()} - Проверка...`);
-    
-    // 1️⃣ Сначала проверяем официального бота
-    let newSeeds = await parseOfficialSeedChannel();
-    let newGear = await parseOfficialGearChannel();
-    let newWeather = await parseOfficialWeatherChannel();
-    let source = 'official';
-    let hasData = false;
-    
-    // 2️⃣ Если официальный бот не работает, проверяем backup
-    if (!newSeeds && !newGear) {
-        console.log('⚠️ Официальный бот молчит, пробую backup...');
-        newSeeds = await parseBackupSeedChannel();
-        newGear = await parseBackupGearChannel();
-        newWeather = null;
-        source = 'backup';
+    try {
+        console.log(`\n🕒 ${new Date().toLocaleTimeString()} - Проверка...`);
+        
+        const [newSeeds, newGear, newWeather] = await Promise.all([
+            parseOfficialSeedChannel(),
+            parseOfficialGearChannel(),
+            parseOfficialWeatherChannel()
+        ]);
+        
+        let source = 'official';
+        let hasData = false;
+        
+        if (!newSeeds && !newGear) {
+            console.log('⚠️ Официальный бот молчит, пробую backup...');
+            const [backupSeeds, backupGear] = await Promise.all([
+                parseBackupSeedChannel(),
+                parseBackupGearChannel()
+            ]);
+            
+            if (backupSeeds || backupGear) {
+                stockData.seeds = backupSeeds || [];
+                stockData.gear = backupGear || [];
+                stockData.weather = null;
+                source = 'backup';
+                hasData = true;
+            }
+        } else {
+            stockData.seeds = newSeeds || [];
+            stockData.gear = newGear || [];
+            stockData.weather = newWeather || null;
+            source = 'official';
+            hasData = true;
+        }
+        
+        if (hasData) {
+            stockData.source = source;
+            stockData.lastUpdate = new Date().toISOString();
+            await saveState();
+            await sendToDiscord();
+        } else {
+            console.log('⚠️ Нет данных ни от одного источника');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка в checkAll:', error.message);
     }
-    
-    // Проверяем есть ли хоть какие-то данные
-    if (newSeeds || newGear || newWeather) {
-        hasData = true;
-    }
-    
-    let changed = false;
-    
-    if (newSeeds) {
-        if (JSON.stringify(newSeeds) !== JSON.stringify(stockData.seeds)) {
-            console.log(`🔄 Семена изменились (${source} mode)`);
-            stockData.seeds = newSeeds;
-            changed = true;
+}
+
+// ===== АВТОМАТИЧЕСКАЯ ЧИСТКА ПАМЯТИ =====
+function cleanMemory() {
+    try {
+        console.log('🧹 Плановая чистка памяти...');
+        
+        // Чистим кэш ролей
+        const oldSize = roleNameCache.size;
+        roleNameCache.clear();
+        console.log(`✅ Кэш ролей очищен (было ${oldSize} записей)`);
+        
+        // Пытаемся вызвать сборщик мусора
+        if (global.gc) {
+            global.gc();
+            console.log('✅ Сборщик мусора вызван');
         }
-    } else {
-        if (stockData.seeds.length > 0) {
-            stockData.seeds = [];
-            changed = true;
+        
+        // Очищаем неиспользуемые переменные
+        if (global.gc) {
+            global.gc();
+            global.gc();
         }
-    }
-    
-    if (newGear) {
-        if (JSON.stringify(newGear) !== JSON.stringify(stockData.gear)) {
-            console.log(`🔄 Гир изменился (${source} mode)`);
-            stockData.gear = newGear;
-            changed = true;
-        }
-    } else {
-        if (stockData.gear.length > 0) {
-            stockData.gear = [];
-            changed = true;
-        }
-    }
-    
-    if (newWeather && source === 'official') {
-        if (JSON.stringify(newWeather) !== JSON.stringify(stockData.weather)) {
-            console.log('🔄 Погода изменилась');
-            stockData.weather = newWeather;
-            changed = true;
-        }
-    } else {
-        if (stockData.weather) {
-            stockData.weather = null;
-            changed = true;
-        }
-    }
-    
-    if (changed && hasData) {
-        stockData.source = source;
-        stockData.lastUpdate = new Date().toISOString();
-        await saveState();
-        await sendToDiscord();
-    } else if (!hasData) {
-        console.log('⚠️ Нет данных ни от одного источника');
-    } else {
-        console.log(`⏺️ Без изменений (${source} mode)`);
+        
+        console.log('📊 Память:', process.memoryUsage());
+    } catch (error) {
+        console.error('❌ Ошибка при чистке памяти:', error.message);
     }
 }
 
@@ -593,35 +588,40 @@ async function checkAll() {
 client.on('ready', async () => {
     console.log(`✅ Залогинен как ${client.user.tag}`);
     
-    console.log('\n📋 СПИСОК ТВОИХ СЕРВЕРОВ:');
+    console.log('\n📋 Доступные сервера:');
     client.guilds.cache.forEach(guild => {
-        console.log(`🔹 "${guild.name}" (ID: ${guild.id})`);
+        console.log(`🔹 ${guild.name} (${guild.id})`);
     });
     
     await loadState();
+    
+    // Запускаем первую проверку
     await checkAll();
     
-    setInterval(checkAll, 30 * 1000);
+    // Запускаем регулярные проверки
+    setInterval(checkAll, CHECK_INTERVAL);
+    
+    // Запускаем регулярную чистку памяти
+    setInterval(cleanMemory, MEMORY_CLEAN_INTERVAL);
     
     console.log('👀 Бот запущен и следит за каналами');
+    console.log(`⏱️ Интервал проверки: ${CHECK_INTERVAL/1000} сек`);
+    console.log(`🧹 Интервал чистки: ${MEMORY_CLEAN_INTERVAL/1000/60} мин`);
 });
 
-// ===== АВТОМАТИЧЕСКАЯ ЧИСТКА ПАМЯТИ =====
-setInterval(() => {
-    console.log('🧹 Плановая чистка кэша ролей');
-    roleNameCache.clear();
-    
-    // Попытка вызвать сборщик мусора (если запущено с флагом --expose-gc)
-    try {
-        if (global.gc) {
-            global.gc();
-            console.log('✅ Сборщик мусора вызван');
-        }
-    } catch (e) {
-        // Игнорируем
-    }
-}, 60 * 60 * 1000); // Каждый час
+// Обработка ошибок
+process.on('unhandledRejection', (error) => {
+    console.error('❌ Необработанная ошибка:', error.message);
+});
 
-client.login(process.env.USER_TOKEN);
+process.on('uncaughtException', (error) => {
+    console.error('❌ Непойманная ошибка:', error.message);
+});
+
+client.login(process.env.USER_TOKEN).catch(error => {
+    console.error('❌ Ошибка входа:', error.message);
+});
+  
+
 
 
