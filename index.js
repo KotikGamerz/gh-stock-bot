@@ -1,33 +1,40 @@
 require('dotenv').config();
 // ===== ЖЁСТКАЯ ДИАГНОСТИКА =====
+// ===== ЖЁСТКАЯ ДИАГНОСТИКА =====
 console.log('🔥 ЖЁСТКАЯ ДИАГНОСТИКА');
 console.log('1. Переменные окружения:');
 console.log('USER_TOKEN exists:', !!process.env.USER_TOKEN);
 console.log('USER_TOKEN length:', process.env.USER_TOKEN?.length);
 console.log('USER_TOKEN starts with:', process.env.USER_TOKEN?.substring(0, 5));
 
-// Попробуем залогиниться прямо сейчас
-const { Client } = require('discord.js-selfbot-v13');
-const testClient = new Client();
+// НЕ создаём нового Client, просто проверим сам токен
+const { fetch } = require('undici');
 
-testClient.on('ready', () => {
-    console.log('✅ ТЕСТОВЫЙ КЛИЕНТ ЗАЛОГИНИЛСЯ!');
-    console.log('Username:', testClient.user.tag);
-    process.exit(0);
-});
+async function testToken() {
+    try {
+        console.log('2. Проверяю токен через API...');
+        const response = await fetch('https://discord.com/api/v9/users/@me', {
+            headers: {
+                'Authorization': process.env.USER_TOKEN
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Токен рабочий!');
+            console.log('Аккаунт:', data.username);
+            console.log('ID:', data.id);
+        } else {
+            console.log('❌ Токен НЕ работает!');
+            console.log('Статус:', response.status);
+            console.log('Статус текст:', response.statusText);
+        }
+    } catch (error) {
+        console.log('❌ Ошибка при проверке токена:', error.message);
+    }
+}
 
-testClient.on('error', (err) => {
-    console.log('❌ ТЕСТОВАЯ ОШИБКА:', err.message);
-});
-
-console.log('2. Пытаюсь тестовый логин...');
-testClient.login(process.env.USER_TOKEN).catch(err => {
-    console.log('❌ ТЕСТОВЫЙ ЛОГИН ПРОВАЛИЛСЯ:');
-    console.log('Имя ошибки:', err.name);
-    console.log('Сообщение:', err.message);
-    console.log('Код:', err.code);
-    process.exit(1);
-});
+testToken();
 const { Client } = require('discord.js-selfbot-v13');
 const axios = require('axios');
 const { fetch } = require('undici');
@@ -466,6 +473,7 @@ client.login(process.env.USER_TOKEN).catch(error => {
 });
 
   
+
 
 
 
