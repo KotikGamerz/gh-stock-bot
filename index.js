@@ -1,82 +1,4 @@
 require('dotenv').config();
-// ===== ЖЁСТКАЯ ДИАГНОСТИКА =====
-console.log('🔥 ЖЁСТКАЯ ДИАГНОСТИКА');
-console.log('1. Переменные окружения:');
-console.log('USER_TOKEN exists:', !!process.env.USER_TOKEN);
-console.log('USER_TOKEN length:', process.env.USER_TOKEN?.length);
-console.log('USER_TOKEN starts with:', process.env.USER_TOKEN?.substring(0, 5));
-
-// Используем https вместо undici чтобы избежать конфликтов
-const https = require('https');
-
-function testToken() {
-    console.log('2. Проверяю токен через API...');
-    
-    const options = {
-        hostname: 'discord.com',
-        path: '/api/v9/users/@me',
-        method: 'GET',
-        headers: {
-            'Authorization': process.env.USER_TOKEN
-        }
-    };
-    
-    const req = https.get(options, (res) => {
-        let data = '';
-        
-        res.on('data', (chunk) => {
-            data += chunk;
-        });
-        
-        res.on('end', () => {
-            if (res.statusCode === 200) {
-                try {
-                    const user = JSON.parse(data);
-                    console.log('✅ ТОКЕН РАБОЧИЙ!');
-                    console.log('👤 Аккаунт:', user.username);
-                    console.log('🆔 ID:', user.id);
-                } catch (e) {
-                    console.log('❌ Ошибка парсинга ответа');
-                }
-            } else {
-                console.log('❌ ТОКЕН НЕ РАБОТАЕТ!');
-                console.log('📊 Статус:', res.statusCode);
-                console.log('📝 Ответ:', data);
-            }
-        });
-    });
-    
-    req.on('error', (error) => {
-        console.log('❌ Ошибка запроса:', error.message);
-    });
-    
-    req.end();
-}
-
-testToken();
-
-// ===== ДИАГНОСТИКА =====
-console.log('🚀 Бот запускается...');
-console.log('📊 Проверка переменных окружения:');
-
-const envVars = {
-    USER_TOKEN: !!process.env.USER_TOKEN,
-    SEED_CHANNEL_ID: !!process.env.SEED_CHANNEL_ID,
-    GEAR_CHANNEL_ID: !!process.env.GEAR_CHANNEL_ID,
-    WEATHER_CHANNEL_ID: !!process.env.WEATHER_CHANNEL_ID,
-    BACKUP_SEED_ID: !!process.env.BACKUP_SEED_ID,
-    BACKUP_GEAR_ID: !!process.env.BACKUP_GEAR_ID,
-    TARGET_WEBHOOK_URL: !!process.env.TARGET_WEBHOOK_URL,
-    GUILD_ID: !!process.env.GUILD_ID
-};
-
-console.log(envVars);
-
-if (!process.env.USER_TOKEN) {
-    console.error('❌ ОШИБКА: USER_TOKEN не найден!');
-    process.exit(1);
-}
-// =========================
 
 // ===== Express сервер для Render =====
 const app = express();
@@ -487,6 +409,7 @@ client.login(process.env.USER_TOKEN).catch(error => {
 });
 
   
+
 
 
 
