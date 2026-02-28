@@ -586,6 +586,7 @@ function cleanMemory() {
 
 // ===== ЗАПУСК =====
 client.on('ready', async () => {
+    console.log('🔍 Пытаюсь залогиниться...');
     console.log(`✅ Залогинен как ${client.user.tag}`);
     
     console.log('\n📋 Доступные сервера:');
@@ -594,34 +595,22 @@ client.on('ready', async () => {
     });
     
     await loadState();
-    
-    // Запускаем первую проверку
     await checkAll();
     
-    // Запускаем регулярные проверки
     setInterval(checkAll, CHECK_INTERVAL);
-    
-    // Запускаем регулярную чистку памяти
     setInterval(cleanMemory, MEMORY_CLEAN_INTERVAL);
     
     console.log('👀 Бот запущен и следит за каналами');
-    console.log(`⏱️ Интервал проверки: ${CHECK_INTERVAL/1000} сек`);
-    console.log(`🧹 Интервал чистки: ${MEMORY_CLEAN_INTERVAL/1000/60} мин`);
-});
-
-// Обработка ошибок
-process.on('unhandledRejection', (error) => {
-    console.error('❌ Необработанная ошибка:', error.message);
-});
-
-process.on('uncaughtException', (error) => {
-    console.error('❌ Непойманная ошибка:', error.message);
 });
 
 client.login(process.env.USER_TOKEN).catch(error => {
-    console.error('❌ Ошибка входа:', error.message);
+    console.error('❌ ОШИБКА ВХОДА:', error.message);
+    console.error('🔥 Токен не работает или аккаунт заблокирован!');
+    process.exit(1);
 });
+
   
+
 
 
 
