@@ -245,37 +245,45 @@ async function parseOfficialWeatherChannel() {
     const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
     if (!channel) return null;
 
-    const messages = await channel.messages.fetch({ limit: 1 });
-    const msg = messages.first();
+    // Берём последние 5 сообщений (а не 1)
+    const messages = await channel.messages.fetch({ limit: 5 });
+    if (!messages || messages.size === 0) return null;
 
-    if (!msg) return null;
+    for (const [, msg] of messages) {
 
-    // свежесть (5 минут) — как у тебя, оставляем
-    const messageAge = Date.now() - msg.createdTimestamp;
-    const maxAge = 90 * 1000;
-    if (messageAge > maxAge) {
-      console.log(`⏰ Сообщение погоды слишком старое (${Math.round(messageAge/60000)} мин)`);
-      return null;
-    }
+      const messageAge = Date.now() - msg.createdTimestamp;
+      const maxAge = 90 * 1000; // 1.5 минуты
+      if (messageAge > maxAge) continue;
 
-    // 1) Пытаемся вытащить из EMBED (как у Dawn)
-    if (msg.embeds && msg.embeds.length) {
+      if (!msg.embeds || msg.embeds.length === 0) continue;
+
       const e = msg.embeds[0];
-
-      // Пример Dawn:
-      // title: "Weather Update"
-      // description: "It's now Meteor Shower!"
-      // fields: Start: "... 14:00", End: "... 14:05"
-
       const desc = e.description || '';
       let weatherName = null;
 
-      // ловим всё после "It's now ..."
-      const mNow = desc.match(/it'?s\s+now\s+(.+?)[!.\n]/i);
-      if (mNow) weatherName = cleanWeatherName(mNow[1]);
-      if (!weatherName) weatherName = cleanWeatherName(desc);
+      // 1️⃣ Самый надёжный способ — через роль
+      if (msg.mentions && msg.mentions.roles.size > 0) {
+        const role = msg.mentions.roles.first();
+        weatherName = role.name;
+      }
 
-      // Start/End часто в fields
+      // 2️⃣ Если роли нет — пробуем через текст
+      if (!weatherName) {
+        const mNow = desc.match(/it'?s\s+now\s+(.+?)[!.\n]/i);
+        if (mNow) {
+          weatherName = cleanWeatherName(mNow[1]);
+        }
+      }
+
+      // 3️⃣ Последний fallback
+      if (!weatherName) {
+        weatherName = cleanWeatherName(desc);
+      }
+
+      // Если погоду не нашли — идём к следующему сообщению
+      if (!weatherName) continue;
+
+      // === Время ===
       let startRaw = null;
       let endRaw = null;
 
@@ -287,11 +295,11 @@ async function parseOfficialWeatherChannel() {
         }
       }
 
-      // если вдруг Start/End в описании
       if (!startRaw) {
         const ms = desc.match(/start[:\s]+(.+)/i);
         if (ms) startRaw = ms[1];
       }
+
       if (!endRaw) {
         const me = desc.match(/end[:\s]+(.+)/i);
         if (me) endRaw = me[1];
@@ -300,37 +308,21 @@ async function parseOfficialWeatherChannel() {
       const startTime = extractHHMM(startRaw);
       const endTime = extractHHMM(endRaw);
 
-      if (weatherName) {
-        return { weather: weatherName, startTime, endTime };
-      }
-
-      return null;
-    }
-
-    // 2) Fallback: старый способ через components (если вдруг у них поменяется)
-    if (!msg.components || !msg.components.length) return null;
-
-    const text = extractTextFromComponents(msg.components);
-
-    // теперь ловим не \w+ (одно слово), а всё до перевода строки/воскл. знака
-    const weatherMatch = text.match(/now\s+@?(.+?)[\n!]/i);
-    const startMatch = text.match(/start[:\s]+(.+)/i);
-    const endMatch = text.match(/end[:\s]+(.+)/i);
-
-    const weatherName = cleanWeatherName(weatherMatch ? weatherMatch[1] : null);
-    const startTime = extractHHMM(startMatch ? startMatch[1] : null);
-    const endTime = extractHHMM(endMatch ? endMatch[1] : null);
-
-    if (weatherName) {
-      return { weather: weatherName, startTime, endTime };
+      return {
+        weather: weatherName,
+        startTime,
+        endTime
+      };
     }
 
     return null;
+
   } catch (error) {
     console.error('Ошибка парсинга погоды:', error.message);
     return null;
   }
 }
+ 
 
 // ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
 async function parseBackupSeedChannel() {
@@ -661,5 +653,6 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
