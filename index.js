@@ -49,12 +49,14 @@ const EMOJIS = {
     'Super Sprinkler': '💎',
     'Trowel': '🧤',
     // Погода
+    'Meteor Shower': '☄️',
+    'Meteor': '☄️',   
+    'Rain': '🌧️',
     'Fog': '🌫️',
-    'Rain': '☔',
-    'Sandstorm': '🏜️',
     'Snow': '❄️',
-    'Starfall': '🌠',
-    'Storm': '⛈️'
+    'Sandstorm': '🏜️',
+    'Storm': '⛈️',
+    'Starfall': '🌠'
 };
 
 // Кэш для имён ролей
@@ -212,45 +214,122 @@ async function parseOfficialGearChannel() {
     }
 }
 
+function cleanWeatherName(raw) {
+  if (!raw) return null;
+
+  // убираем роль-упоминания <@&123> и @
+  let s = raw
+    .replace(/<@&\d+>/g, '')
+    .replace(/@/g, '')
+    .replace(/\*/g, '')
+    .trim();
+
+  // убираем ! и точки
+  s = s.replace(/[!.]/g, '').trim();
+
+  // иногда попадается "It's now Meteor Shower!" — вырежем мусор
+  s = s.replace(/^it'?s\s+now\s+/i, '').trim();
+
+  return s || null;
+}
+
+function extractHHMM(text) {
+  if (!text) return null;
+  const m = String(text).match(/(\d{1,2}:\d{2})/);
+  return m ? m[1] : null;
+}
+
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ПОГОДА) =====
 async function parseOfficialWeatherChannel() {
-    try {
-        const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
-        if (!channel) return null;
-        
-        const messages = await channel.messages.fetch({ limit: 1 });
-        const msg = messages.first();
-        
-        if (!msg || !msg.components.length) return null;
-        
-        // Проверка на свежесть (5 минут)
-        const messageAge = Date.now() - msg.createdTimestamp;
-        const maxAge = 5 * 60 * 1000;
-        
-        if (messageAge > maxAge) {
-            console.log(`⏰ Сообщение погоды слишком старое (${Math.round(messageAge/60000)} мин)`);
-            return null;
-        }
-        
-        const text = extractTextFromComponents(msg.components);
-        
-        const weatherMatch = text.match(/now @?(\w+)/i);
-        const startMatch = text.match(/start[:\s]+(\d{1,2}:\d{2})/i);
-        const endMatch = text.match(/end[:\s]+(\d{1,2}:\d{2})/i);
-        
-        if (weatherMatch) {
-            return {
-                weather: weatherMatch[1],
-                startTime: startMatch ? startMatch[1] : null,
-                endTime: endMatch ? endMatch[1] : null
-            };
-        }
-        
-        return null;
-    } catch (error) {
-        console.error('Ошибка парсинга погоды:', error.message);
-        return null;
+  try {
+    const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
+    if (!channel) return null;
+
+    const messages = await channel.messages.fetch({ limit: 1 });
+    const msg = messages.first();
+
+    if (!msg) return null;
+
+    // свежесть (5 минут) — как у тебя, оставляем
+    const messageAge = Date.now() - msg.createdTimestamp;
+    const maxAge = 90 * 1000;
+    if (messageAge > maxAge) {
+      console.log(`⏰ Сообщение погоды слишком старое (${Math.round(messageAge/60000)} мин)`);
+      return null;
     }
+
+    // 1) Пытаемся вытащить из EMBED (как у Dawn)
+    if (msg.embeds && msg.embeds.length) {
+      const e = msg.embeds[0];
+
+      // Пример Dawn:
+      // title: "Weather Update"
+      // description: "It's now Meteor Shower!"
+      // fields: Start: "... 14:00", End: "... 14:05"
+
+      const desc = e.description || '';
+      let weatherName = null;
+
+      // ловим всё после "It's now ..."
+      const mNow = desc.match(/it'?s\s+now\s+(.+?)[!.\n]/i);
+      if (mNow) weatherName = cleanWeatherName(mNow[1]);
+      if (!weatherName) weatherName = cleanWeatherName(desc);
+
+      // Start/End часто в fields
+      let startRaw = null;
+      let endRaw = null;
+
+      if (e.fields && e.fields.length) {
+        for (const f of e.fields) {
+          const fname = (f.name || '').toLowerCase();
+          if (fname.includes('start')) startRaw = f.value;
+          if (fname.includes('end')) endRaw = f.value;
+        }
+      }
+
+      // если вдруг Start/End в описании
+      if (!startRaw) {
+        const ms = desc.match(/start[:\s]+(.+)/i);
+        if (ms) startRaw = ms[1];
+      }
+      if (!endRaw) {
+        const me = desc.match(/end[:\s]+(.+)/i);
+        if (me) endRaw = me[1];
+      }
+
+      const startTime = extractHHMM(startRaw);
+      const endTime = extractHHMM(endRaw);
+
+      if (weatherName) {
+        return { weather: weatherName, startTime, endTime };
+      }
+
+      return null;
+    }
+
+    // 2) Fallback: старый способ через components (если вдруг у них поменяется)
+    if (!msg.components || !msg.components.length) return null;
+
+    const text = extractTextFromComponents(msg.components);
+
+    // теперь ловим не \w+ (одно слово), а всё до перевода строки/воскл. знака
+    const weatherMatch = text.match(/now\s+@?(.+?)[\n!]/i);
+    const startMatch = text.match(/start[:\s]+(.+)/i);
+    const endMatch = text.match(/end[:\s]+(.+)/i);
+
+    const weatherName = cleanWeatherName(weatherMatch ? weatherMatch[1] : null);
+    const startTime = extractHHMM(startMatch ? startMatch[1] : null);
+    const endTime = extractHHMM(endMatch ? endMatch[1] : null);
+
+    if (weatherName) {
+      return { weather: weatherName, startTime, endTime };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Ошибка парсинга погоды:', error.message);
+    return null;
+  }
 }
 
 // ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
@@ -431,7 +510,7 @@ async function sendToDiscord() {
         
         fields.push({
             name: '☁️ WEATHER',
-            value: `• ${weather.weather} ${weatherEmoji}\n• Started: ${weather.startTime || '??'}\n• Ends: ${weather.endTime || '??'}${timeLeft}`,
+            value: `• ${weather.weather} ${weatherEmoji}\n• Start: ${weather.startTime || '??'}\n• End: ${weather.endTime || '??'}`,
             inline: false
         });
     }
