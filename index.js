@@ -242,83 +242,87 @@ function extractHHMM(text) {
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ПОГОДА) =====
 async function parseOfficialWeatherChannel() {
   try {
-    const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
+    // ВАЖНО: иногда cache.get не находит — fetch надёжнее
+    const channel = await client.channels.fetch(process.env.WEATHER_CHANNEL_ID).catch(() => null);
     if (!channel) return null;
 
-    // Берём последние 5 сообщений (а не 1)
-    const messages = await channel.messages.fetch({ limit: 5 });
-    if (!messages || messages.size === 0) return null;
+    const messages = await channel.messages.fetch({ limit: 1 });
+    const msg = messages.first();
+    if (!msg) return null;
 
-    for (const [, msg] of messages) {
+    // свежесть (90 секунд) — как ты хотел
+    const messageAge = Date.now() - msg.createdTimestamp;
+    const maxAge = 90 * 1000;
+    if (messageAge > maxAge) {
+      console.log(`⏰ Сообщение погоды слишком старое (${Math.round(messageAge / 60000)} мин)`);
+      return null;
+    }
 
-      const messageAge = Date.now() - msg.createdTimestamp;
-      const maxAge = 90 * 1000; // 1.5 минуты
-      if (messageAge > maxAge) continue;
-
-      if (!msg.embeds || msg.embeds.length === 0) continue;
-
+    // 1) EMBED (как у Dawn) — основной вариант
+    if (msg.embeds && msg.embeds.length > 0) {
       const e = msg.embeds[0];
-      const desc = e.description || '';
+
+      const desc = e.description || "";
       let weatherName = null;
 
-      // 1️⃣ Самый надёжный способ — через роль
-      if (msg.mentions && msg.mentions.roles.size > 0) {
+      // 1.1) Самый надёжный способ: роль-упоминание (Storm/Snow/Starfall и т.д.)
+      if (msg.mentions && msg.mentions.roles && msg.mentions.roles.size > 0) {
         const role = msg.mentions.roles.first();
-        weatherName = role.name;
+        if (role && role.name) weatherName = role.name;
       }
 
-      // 2️⃣ Если роли нет — пробуем через текст
+      // 1.2) Если роль не распарсилась — берём из текста "It's now ..."
       if (!weatherName) {
         const mNow = desc.match(/it'?s\s+now\s+(.+?)[!.\n]/i);
-        if (mNow) {
-          weatherName = cleanWeatherName(mNow[1]);
-        }
+        if (mNow) weatherName = cleanWeatherName(mNow[1]);
       }
 
-      // 3️⃣ Последний fallback
+      // 1.3) Если и так не получилось — чистим весь desc
       if (!weatherName) {
         weatherName = cleanWeatherName(desc);
       }
 
-      // Если погоду не нашли — идём к следующему сообщению
-      if (!weatherName) continue;
-
-      // === Время ===
+      // Start/End обычно лежат в embed.fields
       let startRaw = null;
       let endRaw = null;
 
-      if (e.fields && e.fields.length) {
+      if (e.fields && e.fields.length > 0) {
         for (const f of e.fields) {
-          const fname = (f.name || '').toLowerCase();
-          if (fname.includes('start')) startRaw = f.value;
-          if (fname.includes('end')) endRaw = f.value;
+          const fname = (f.name || "").toLowerCase();
+          if (fname.includes("start")) startRaw = f.value;
+          if (fname.includes("end")) endRaw = f.value;
         }
-      }
-
-      if (!startRaw) {
-        const ms = desc.match(/start[:\s]+(.+)/i);
-        if (ms) startRaw = ms[1];
-      }
-
-      if (!endRaw) {
-        const me = desc.match(/end[:\s]+(.+)/i);
-        if (me) endRaw = me[1];
       }
 
       const startTime = extractHHMM(startRaw);
       const endTime = extractHHMM(endRaw);
 
-      return {
-        weather: weatherName,
-        startTime,
-        endTime
-      };
+      if (weatherName) {
+        return { weather: weatherName, startTime, endTime };
+      }
+      return null;
+    }
+
+    // 2) Fallback: components (если вдруг формат изменят обратно)
+    if (!msg.components || msg.components.length === 0) return null;
+
+    const text = extractTextFromComponents(msg.components);
+
+    const weatherMatch = text.match(/now\s+@?(.+?)[\n!]/i);
+    const startMatch = text.match(/start[:\s]+(.+)/i);
+    const endMatch = text.match(/end[:\s]+(.+)/i);
+
+    const weatherName = cleanWeatherName(weatherMatch ? weatherMatch[1] : null);
+    const startTime = extractHHMM(startMatch ? startMatch[1] : null);
+    const endTime = extractHHMM(endMatch ? endMatch[1] : null);
+
+    if (weatherName) {
+      return { weather: weatherName, startTime, endTime };
     }
 
     return null;
-
   } catch (error) {
-    console.error('Ошибка парсинга погоды:', error.message);
+    console.error("Ошибка парсинга погоды:", error.message);
     return null;
   }
 }
@@ -653,6 +657,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
