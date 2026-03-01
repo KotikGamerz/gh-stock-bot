@@ -38,6 +38,8 @@ const EMOJIS = {
     'Potato': '🥔',
     'Cabbage': '🥬',
     'Cherry': '🍒',
+    'Bamboo': '🎋',
+    'Mango': '🥭',
     // Gear
     'Watering Can': '💧',
     'Basic Sprinkler': '💦',
@@ -45,6 +47,7 @@ const EMOJIS = {
     'Turbo Sprinkler': '⚡',
     'Favorite Tool': '⭐',
     'Super Sprinkler': '💎',
+    'Trowel': '🧤',
     // Погода
     'Fog': '🌫️',
     'Rain': '☔',
@@ -579,4 +582,5 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
