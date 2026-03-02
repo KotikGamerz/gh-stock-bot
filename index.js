@@ -214,65 +214,19 @@ async function parseOfficialGearChannel() {
     }
 }
 
-function cleanWeatherName(raw) {
-  if (!raw) return null;
-
-  // убираем роль-упоминания <@&123> и @
-  let s = raw
-    .replace(/<@&\d+>/g, '')
-    .replace(/@/g, '')
-    .replace(/\*/g, '')
-    .trim();
-
-  // убираем ! и точки
-  s = s.replace(/[!.]/g, '').trim();
-
-  // иногда попадается "It's now Meteor Shower!" — вырежем мусор
-  s = s.replace(/^it'?s\s+now\s+/i, '').trim();
-
-  return s || null;
-}
-
-function extractHHMM(text) {
-  if (!text) return null;
-  const m = String(text).match(/(\d{1,2}:\d{2})/);
-  return m ? m[1] : null;
-}
-
 // ===== ПАРСИНГ ПОГОДЫ ИЗ COMPONENTS =====
 async function parseOfficialWeatherChannel() {
     try {
         const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
-        if (!channel) {
-            console.log('❌ Канал погоды не найден');
-            return null;
-        }
-        
-        console.log(`🌦️ Проверяю канал погоды: #${channel.name}`);
+        if (!channel) return null;
         
         const messages = await channel.messages.fetch({ limit: 1 });
         const msg = messages.first();
         
-        if (!msg) {
-            console.log('❌ Нет сообщений в канале погоды');
+        if (!msg || !msg.components?.length) {
+            console.log('🌤️ Нет сообщения о погоде');
             return null;
         }
-        
-        console.log(`📨 Сообщение от ${msg.author.username} в ${new Date(msg.createdTimestamp).toLocaleTimeString()}`);
-        console.log(`📦 Components: ${msg.components?.length || 0}`);
-        console.log(`🖼️ Embeds: ${msg.embeds?.length || 0}`);
-        
-        if (!msg.components?.length) {
-            console.log('❌ Нет components в сообщении погоды');
-            return null;
-        }
-        
-        // Вытаскиваем текст из components
-        const text = extractTextFromComponents(msg.components);
-        console.log('📝 Сырой текст погоды:');
-        console.log('====================');
-        console.log(text);
-        console.log('====================');
         
         // Проверка на свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
@@ -283,18 +237,24 @@ async function parseOfficialWeatherChannel() {
             return null;
         }
         
-        // Парсим время
-        const startMatch = text.match(/Start:.*?(\d{1,2}:\d{2})/i);
-        const endMatch = text.match(/End:.*?(\d{1,2}:\d{2})/i);
+        const text = extractTextFromComponents(msg.components);
         
-        console.log(`🔍 Start match: ${startMatch ? startMatch[1] : 'не найдено'}`);
-        console.log(`🔍 End match: ${endMatch ? endMatch[1] : 'не найдено'}`);
+        // Парсим UNIX-таймштампы из <t:123456789:F>
+        const startMatch = text.match(/Start:.*?<t:(\d+):F>/i);
+        const endMatch = text.match(/End:.*?<t:(\d+):F>/i);
         
         if (startMatch && endMatch) {
-            console.log(`✅ Погода: старт ${startMatch[1]}, конец ${endMatch[1]}`);
+            // Конвертируем UNIX в ЧЧ:ММ
+            const startDate = new Date(parseInt(startMatch[1]) * 1000);
+            const endDate = new Date(parseInt(endMatch[1]) * 1000);
+            
+            const startTime = `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`;
+            const endTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
+            
+            console.log(`✅ Погода: старт ${startTime}, конец ${endTime}`);
             return {
-                startTime: startMatch[1],
-                endTime: endMatch[1]
+                startTime: startTime,
+                endTime: endTime
             };
         }
         
@@ -618,6 +578,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
