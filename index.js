@@ -243,41 +243,58 @@ function extractHHMM(text) {
 async function parseOfficialWeatherChannel() {
     try {
         const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
-        if (!channel) return null;
-        
-        // Берём только последнее сообщение
-        const messages = await channel.messages.fetch({ limit: 1 });
-        const msg = messages.first();
-        
-        if (!msg || !msg.components?.length) {
-            console.log('🌤️ Нет сообщения о погоде');
+        if (!channel) {
+            console.log('❌ Канал погоды не найден');
             return null;
         }
         
-        // Проверка на свежесть (5 минут максимум)
+        console.log(`🌦️ Проверяю канал погоды: #${channel.name}`);
+        
+        const messages = await channel.messages.fetch({ limit: 1 });
+        const msg = messages.first();
+        
+        if (!msg) {
+            console.log('❌ Нет сообщений в канале погоды');
+            return null;
+        }
+        
+        console.log(`📨 Сообщение от ${msg.author.username} в ${new Date(msg.createdTimestamp).toLocaleTimeString()}`);
+        console.log(`📦 Components: ${msg.components?.length || 0}`);
+        console.log(`🖼️ Embeds: ${msg.embeds?.length || 0}`);
+        
+        if (!msg.components?.length) {
+            console.log('❌ Нет components в сообщении погоды');
+            return null;
+        }
+        
+        // Вытаскиваем текст из components
+        const text = extractTextFromComponents(msg.components);
+        console.log('📝 Сырой текст погоды:');
+        console.log('====================');
+        console.log(text);
+        console.log('====================');
+        
+        // Проверка на свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
-        const maxAge = 5 * 60 * 1000; // 5 минут
+        const maxAge = 5 * 60 * 1000;
         
         if (messageAge > maxAge) {
             console.log(`⏰ Погода устарела (${Math.round(messageAge/60000)} мин назад)`);
             return null;
         }
         
-        // Вытаскиваем текст из components
-        const text = extractTextFromComponents(msg.components);
-        console.log('🌦️ Текст погоды:', text);
-        
-        // Парсим время начала и конца
-        // Ищем "Start: ... HH:MM" или "Start: ... HH:MM"
+        // Парсим время
         const startMatch = text.match(/Start:.*?(\d{1,2}:\d{2})/i);
         const endMatch = text.match(/End:.*?(\d{1,2}:\d{2})/i);
+        
+        console.log(`🔍 Start match: ${startMatch ? startMatch[1] : 'не найдено'}`);
+        console.log(`🔍 End match: ${endMatch ? endMatch[1] : 'не найдено'}`);
         
         if (startMatch && endMatch) {
             console.log(`✅ Погода: старт ${startMatch[1]}, конец ${endMatch[1]}`);
             return {
                 startTime: startMatch[1],
                 endTime: endMatch[1]
-                // Название погоды не нужно, только время
             };
         }
         
@@ -601,6 +618,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
