@@ -241,124 +241,64 @@ function extractHHMM(text) {
 
 // ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ПОГОДА) =====
 async function parseOfficialWeatherChannel() {
-  try {
-    // Берём канал надёжно через fetch
-    const channel = await client.channels.fetch(process.env.WEATHER_CHANNEL_ID).catch(() => null);
-    if (!channel) {
-      console.log("❌ Weather channel not found");
-      return null;
+    try {
+        const channel = client.channels.cache.get(process.env.WEATHER_CHANNEL_ID);
+        if (!channel) return null;
+        
+        const messages = await channel.messages.fetch({ limit: 5 });
+        console.log(`🌦️ Найдено сообщений погоды: ${messages.size}`);
+        
+        for (const [id, msg] of messages) {
+            console.log(`--- Сообщение ${id} ---`);
+            console.log(`Время: ${new Date(msg.createdTimestamp).toLocaleString()}`);
+            console.log(`Автор: ${msg.author.username}`);
+            console.log(`Components: ${msg.components?.length || 0}`);
+            console.log(`Embeds: ${msg.embeds?.length || 0}`);
+            console.log(`Content: "${msg.content?.substring(0, 50)}"`);
+        }
+        
+        // Берём самое свежее
+        const msg = messages.first();
+        if (!msg) return null;
+        
+        const messageAge = Date.now() - msg.createdTimestamp;
+        const maxAge = 5 * 60 * 1000;
+        
+        if (messageAge > maxAge) {
+            console.log(`⏰ Погода слишком старая: ${Math.round(messageAge/60000)} мин`);
+            return null;
+        }
+        
+        if (!msg.components?.length) {
+            console.log('❌ Нет components в сообщении погоды');
+            return null;
+        }
+        
+        const text = extractTextFromComponents(msg.components);
+        console.log('📝 Текст погоды:', text);
+        
+        // Парсим погоду
+        const weatherMatch = text.match(/now @?(\w+)/i);
+        const startMatch = text.match(/start[:\s]+(\d{1,2}:\d{2})/i);
+        const endMatch = text.match(/end[:\s]+(\d{1,2}:\d{2})/i);
+        
+        if (weatherMatch) {
+            console.log(`✅ Найдена погода: ${weatherMatch[1]}`);
+            return {
+                weather: weatherMatch[1],
+                startTime: startMatch?.[1] || null,
+                endTime: endMatch?.[1] || null
+            };
+        }
+        
+        console.log('❌ Не удалось распарсить погоду из текста');
+        return null;
+        
+    } catch (error) {
+        console.error('Ошибка парсинга погоды:', error.message);
+        return null;
     }
-
-    console.log("🌦️ Weather channel:", channel.id, channel.name);
-
-    // Берём последние 5 сообщений
-    const messages = await channel.messages.fetch({ limit: 5 });
-
-    console.log("🌦️ Last 5 weather messages:");
-    for (const m of messages.values()) {
-      console.log(
-        "—",
-        new Date(m.createdTimestamp).toISOString(),
-        "id:", m.id,
-        "author:", m.author?.tag,
-        "embeds:", m.embeds?.length || 0,
-        "contentLen:", (m.content || "").length
-      );
-    }
-
-    // Берём САМОЕ последнее сообщение
-    const msg = messages.first();
-    if (!msg) {
-      console.log("❌ No messages found in weather channel");
-      return null;
-    }
-
-    // Проверка свежести
-    const messageAge = Date.now() - msg.createdTimestamp;
-    const maxAge = 90 * 1000;
-
-    console.log("🌦️ Message age (sec):", Math.round(messageAge / 1000));
-
-    if (messageAge > maxAge) {
-      console.log("⏰ Weather message too old");
-      return null;
-    }
-
-    // Если нет embed — сразу выходим
-    if (!msg.embeds || msg.embeds.length === 0) {
-      console.log("❌ No embed in last message");
-      return null;
-    }
-
-    const embed = msg.embeds[0];
-
-    console.log("🌦️ EMBED title:", embed.title);
-    console.log("🌦️ EMBED desc:", embed.description);
-    console.log("🌦️ EMBED fields:", embed.fields);
-
-    const desc = embed.description || "";
-    let weatherName = null;
-
-    // 1️⃣ Попробуем вытащить роль через <@&ID>
-    const roleIdMatch = desc.match(/<@&(\d+)>/);
-    if (roleIdMatch) {
-      const roleId = roleIdMatch[1];
-      console.log("🌦️ Found role ID:", roleId);
-
-      const role = msg.guild.roles.cache.get(roleId);
-      if (role) {
-        weatherName = role.name;
-        console.log("🌦️ Resolved role name:", weatherName);
-      }
-    }
-
-    // 2️⃣ Если роли нет — берём из текста "It's now ..."
-    if (!weatherName) {
-      const match = desc.match(/it'?s\s+now\s+(.+?)[!.\n]/i);
-      if (match) {
-        weatherName = cleanWeatherName(match[1]);
-        console.log("🌦️ Parsed from text:", weatherName);
-      }
-    }
-
-    if (!weatherName) {
-      console.log("❌ Weather name not parsed");
-      return null;
-    }
-
-    // === Start / End ===
-    let startRaw = null;
-    let endRaw = null;
-
-    if (embed.fields && embed.fields.length > 0) {
-      for (const field of embed.fields) {
-        const fname = (field.name || "").toLowerCase();
-        if (fname.includes("start")) startRaw = field.value;
-        if (fname.includes("end")) endRaw = field.value;
-      }
-    }
-
-    console.log("🌦️ Raw start:", startRaw);
-    console.log("🌦️ Raw end:", endRaw);
-
-    const startTime = extractHHMM(startRaw);
-    const endTime = extractHHMM(endRaw);
-
-    console.log("🌦️ Parsed start:", startTime);
-    console.log("🌦️ Parsed end:", endTime);
-
-    return {
-      weather: weatherName,
-      startTime,
-      endTime
-    };
-
-  } catch (error) {
-    console.error("❌ Weather parsing error:", error);
-    return null;
-  }
 }
- 
 
 // ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
 async function parseBackupSeedChannel() {
@@ -689,6 +629,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
