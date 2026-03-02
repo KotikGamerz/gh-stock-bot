@@ -228,7 +228,7 @@ async function parseOfficialWeatherChannel() {
             return null;
         }
 
-        // Проверка на свежесть (5 минут)
+        // свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
         const maxAge = 5 * 60 * 1000;
 
@@ -239,48 +239,41 @@ async function parseOfficialWeatherChannel() {
 
         const text = extractTextFromComponents(msg.components);
 
-        // === НАЗВАНИЕ ПОГОДЫ ===
+        // Название погоды из <@&ROLE_ID>
         let weatherName = null;
         const nameMatch = text.match(/It's now <@&(\d+)>!/);
 
         if (nameMatch) {
             const roleId = nameMatch[1];
             const resolvedName = await findRoleName(roleId);
-            if (resolvedName) {
-                weatherName = resolvedName;
-            }
+            if (resolvedName) weatherName = resolvedName;
         }
 
-        // === UNIX ВРЕМЯ ===
+        // UNIX timestamps из <t:XXXX:F>
         const startMatch = text.match(/Start:.*?<t:(\d+):F>/i);
         const endMatch = text.match(/End:.*?<t:(\d+):F>/i);
 
         if (!startMatch || !endMatch) {
-            console.log("❌ Не удалось распарсить время погоды");
+            console.log("❌ Не удалось распарсить UNIX-время погоды");
             return null;
         }
 
-        const startDate = new Date(parseInt(startMatch[1]) * 1000);
-        const endDate = new Date(parseInt(endMatch[1]) * 1000);
+        const startUnix = parseInt(startMatch[1], 10);
+        const endUnix = parseInt(endMatch[1], 10);
 
-        // UTC формат HH:MM
-        const startTime = startDate.toISOString().slice(11, 16);
-        const endTime = endDate.toISOString().slice(11, 16);
-
-        console.log(`✅ Погода: ${weatherName || "Unknown"}, старт ${startTime}, конец ${endTime}`);
+        console.log(`✅ Погода: ${weatherName || "Unknown"}, startUnix=${startUnix}, endUnix=${endUnix}`);
 
         return {
             name: weatherName || "Unknown",
-            startTime: startTime,
-            endTime: endTime
+            startUnix,
+            endUnix
         };
 
     } catch (error) {
         console.error("❌ Ошибка парсинга погоды:", error.message);
         return null;
     }
-            }
-
+}
 
 // ===== ПАРСИНГ BACKUP БОТА (СЕМЕНА) =====
 async function parseBackupSeedChannel() {
@@ -438,15 +431,19 @@ async function sendToDiscord() {
         });
     }
     
-    // Погода
+    // Погода (только если есть и это official режим)
     if (stockData.weather && stockData.source === 'official') {
-        const weatherEmoji = EMOJIS[stockData.weather.name] || '☀️'; // Берём эмодзи из словаря
-    
-      fields.push({
-          name: '☀️ Weather',
-          value: `• ${stockData.weather.name} ${weatherEmoji}\n• Starts: ${stockData.weather.startTime}\n• Ends: ${stockData.weather.endTime}`,
-          inline: false
-      });
+        const w = stockData.weather;
+        const weatherEmoji = EMOJIS[w.name] || '☁️';
+
+        const startTag = w.startUnix ? `<t:${w.startUnix}:s> (<t:${w.startUnix}:R>)` : '??';
+        const endTag = w.endUnix ? `<t:${w.endUnix}:s> (<t:${w.endUnix}:R>)` : '??';
+
+        fields.push({
+            name: '☁️ WEATHER',
+            value: `• ${w.name} ${weatherEmoji}\n• Start: ${startTag}\n• End: ${endTag}`,
+            inline: false
+         });
     }
     
     // Добавляем текст о backup режиме если нужно
@@ -595,6 +592,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
