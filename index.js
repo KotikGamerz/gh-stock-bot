@@ -239,20 +239,35 @@ async function parseOfficialWeatherChannel() {
         
         const text = extractTextFromComponents(msg.components);
         
-        // Парсим UNIX-таймштампы из <t:123456789:F>
+        // Парсим название погоды (из <@&ROLE_ID>)
+        const nameMatch = text.match(/It's now <@&(\d+)>!/);
+        let weatherName = null;
+        
+        if (nameMatch) {
+            // Пробуем найти имя роли через кэш
+            for (const [, guild] of client.guilds.cache) {
+                const role = guild.roles.cache.get(nameMatch[1]);
+                if (role) {
+                    weatherName = role.name;
+                    break;
+                }
+            }
+        }
+        
+        // Парсим UNIX-таймштампы
         const startMatch = text.match(/Start:.*?<t:(\d+):F>/i);
         const endMatch = text.match(/End:.*?<t:(\d+):F>/i);
         
         if (startMatch && endMatch) {
-            // Конвертируем UNIX в ЧЧ:ММ
             const startDate = new Date(parseInt(startMatch[1]) * 1000);
             const endDate = new Date(parseInt(endMatch[1]) * 1000);
             
             const startTime = `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`;
             const endTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
             
-            console.log(`✅ Погода: старт ${startTime}, конец ${endTime}`);
+            console.log(`✅ Погода: ${weatherName || 'Unknown'}, старт ${startTime}, конец ${endTime}`);
             return {
+                name: weatherName || 'Unknown',
                 startTime: startTime,
                 endTime: endTime
             };
@@ -425,11 +440,13 @@ async function sendToDiscord() {
     
     // Погода
     if (stockData.weather && stockData.source === 'official') {
-    fields.push({
-        name: '☀️ Weather',
-        value: `• Starts: ${stockData.weather.startTime}\n• Ends: ${stockData.weather.endTime}`,
-        inline: false
-    });
+        const weatherEmoji = EMOJIS[stockData.weather.name] || '☀️'; // Берём эмодзи из словаря
+    
+      fields.push({
+          name: '☀️ Weather',
+          value: `• ${stockData.weather.name} ${weatherEmoji}\n• Starts: ${stockData.weather.startTime}\n• Ends: ${stockData.weather.endTime}`,
+          inline: false
+      });
     }
     
     // Добавляем текст о backup режиме если нужно
@@ -578,6 +595,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
