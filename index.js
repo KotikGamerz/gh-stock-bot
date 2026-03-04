@@ -440,7 +440,7 @@ async function sendToDiscord() {
         const endTag = w.endUnix ? `<t:${w.endUnix}:s> (<t:${w.endUnix}:R>)` : '??';
 
         fields.push({
-            name: '☁️ WEATHER',
+            name: '☀️ WEATHER',
             value: `• ${w.name} ${weatherEmoji}\n• Start: ${startTag}\n• End: ${endTag}`,
             inline: false
          });
@@ -592,6 +592,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
