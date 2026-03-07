@@ -431,21 +431,6 @@ async function sendToDiscord() {
         });
     }
     
-    // Погода (только если есть и это official режим)
-    if (stockData.weather && stockData.source === 'official') {
-        const w = stockData.weather;
-        const weatherEmoji = EMOJIS[w.name] || '☁️';
-
-        const startTag = w.startUnix ? `<t:${w.startUnix}:s> (<t:${w.startUnix}:R>)` : '??';
-        const endTag = w.endUnix ? `<t:${w.endUnix}:s> (<t:${w.endUnix}:R>)` : '??';
-
-        fields.push({
-            name: '☀️ WEATHER',
-            value: `• ${w.name} ${weatherEmoji}\n• Start: ${startTag}\n• End: ${endTag}`,
-            inline: false
-         });
-    }
-    
     // Добавляем текст о backup режиме если нужно
     let footerText = `Last update: ${new Date().toLocaleTimeString()} UTC`;
     if (stockData.source === 'backup') {
@@ -592,6 +577,7 @@ client.on('ready', async () => {
 });
 
 client.login(process.env.USER_TOKEN);
+
 
 
 
