@@ -40,6 +40,8 @@ const EMOJIS = {
     'Cherry': '🍒',
     'Bamboo': '🎋',
     'Mango': '🥭',
+    'Watermelon': '🍉',
+    'Pineapple': '🍍',
     // Gear
     'Watering Can': '💧',
     'Basic Sprinkler': '💦',
@@ -48,6 +50,7 @@ const EMOJIS = {
     'Favorite Tool': '⭐',
     'Super Sprinkler': '💎',
     'Trowel': '🧤',
+    'Reverter': '🔁',
     // Погода
     'Meteor Shower': '☄️',
     'Meteor': '☄️',   
