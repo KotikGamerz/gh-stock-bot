@@ -169,50 +169,69 @@ async function parseOfficialSeedChannel() {
     }
 }
 
-// ===== ПАРСИНГ ОФИЦИАЛЬНОГО БОТА (ГИР) =====
+// ===== ДИАГНОСТИКА ПАРСИНГА ГИРА =====
 async function parseOfficialGearChannel() {
     try {
         const channel = client.channels.cache.get(process.env.GEAR_CHANNEL_ID);
-        if (!channel) return null;
-        
+        if (!channel) {
+            console.log('❌ Канал гира не найден!');
+            return null;
+        }
+
         const messages = await channel.messages.fetch({ limit: 1 });
         const msg = messages.first();
-        
-        if (!msg || !msg.components.length) return null;
-        
+
+        if (!msg || !msg.components.length) {
+            console.log('❌ Нет сообщений с компонентами в канале гира.');
+            return null;
+        }
+
         // Проверка на свежесть (5 минут)
         const messageAge = Date.now() - msg.createdTimestamp;
         const maxAge = 5 * 60 * 1000;
-        
         if (messageAge > maxAge) {
             console.log(`⏰ Сообщение гира слишком старое (${Math.round(messageAge/60000)} мин)`);
             return null;
         }
-        
-        const text = extractTextFromComponents(msg.components);
-        const lines = text.split('\n');
+
+        // --- ДИАГНОСТИКА ---
+        console.log('\n=== ДИАГНОСТИКА ГИРА ===');
+        const rawText = extractTextFromComponents(msg.components);
+        console.log('Сырой текст от бота Dawnbot:\n', rawText);
+        // -------------------
+
+        const lines = rawText.split('\n');
         const items = [];
-        
+
         for (const line of lines) {
             const match = line.match(/<@&(\d+)>\s*\(x(\d+)\)/);
             if (match) {
                 const roleId = match[1];
                 const count = parseInt(match[2]);
                 const name = await findRoleName(roleId);
-                
+
+                // --- ДИАГНОСТИКА ---
+                console.log(`🔍 Найдена строка: ${line}`);
+                console.log(`   Role ID: ${roleId}, Count: ${count}, Найденное имя: ${name}`);
+                // -------------------
+
                 if (name) {
                     items.push({ 
                         name: name, 
                         count: count,
                         roleId: roleId
                     });
+                } else {
+                    console.log(`⚠️ Не удалось найти имя для roleId ${roleId}`);
                 }
             }
         }
-        
+
+        console.log(`📊 Итого предметов в гире: ${items.length}`);
         return items.length ? items : null;
+
     } catch (error) {
-        console.error('Ошибка парсинга официального гира:', error.message);
+        console.error('❌ Ошибка парсинга официального гира:', error.message);
         return null;
     }
 }
