@@ -28,7 +28,7 @@ const EMOJIS = {
     'Onion': '🧅',
     'Strawberry': '🍓',
     'Mushroom': '🍄',
-    'Beetroot': '🟣',
+    'Beetroot': '🫜',
     'Tomato': '🍅',
     'Apple': '🍎',
     'Rose': '🌹',
@@ -43,14 +43,14 @@ const EMOJIS = {
     'Watermelon': '🍉',
     'Pineapple': '🍍',
     // Gear
-    'Watering Can': '💧',
+    'Watering Can': '🚿',
     'Basic Sprinkler': '💦',
     'Harvest Bell': '🔔',
     'Turbo Sprinkler': '⚡',
     'Favorite Tool': '⭐',
     'Super Sprinkler': '💎',
     'Trowel': '🧤',
-    'Reverter': '🔁',
+    'Reverter': '🔩',
     // Погода
     'Meteor Shower': '☄️',
     'Meteor': '☄️',   
@@ -456,7 +456,7 @@ async function sendToDiscord() {
     if (stockData.source === 'backup') {
         message.embeds[0].fields.push({
             name: '⚠️ Backup Mode',
-            value: 'Bot is running in backup mode. Some information (weather, role pings) may be missing.',
+            value: 'Some information may be missing.',
             inline: false
         });
     }
