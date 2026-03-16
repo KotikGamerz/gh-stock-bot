@@ -561,21 +561,46 @@ async function checkAll() {
     }
 }
 
+function startPreciseScheduler() {
+
+    let lastRun = null;
+
+    async function schedulerLoop() {
+
+        const now = new Date();
+        const sec = now.getSeconds();
+        const min = now.getMinutes();
+
+        const currentKey = `${min}:${sec}`;
+
+        if ((sec === 20 || sec === 50) && lastRun !== currentKey) {
+            lastRun = currentKey;
+            await checkAll();
+        }
+
+        setTimeout(schedulerLoop, 1000);
+    }
+
+    schedulerLoop();
+}
+
 // ===== ЗАПУСК =====
 client.on('ready', async () => {
+
     console.log(`✅ Залогинен как ${client.user.tag}`);
-    
+
     console.log('\n📋 СПИСОК ТВОИХ СЕРВЕРОВ:');
     client.guilds.cache.forEach(guild => {
         console.log(`🔹 "${guild.name}" (ID: ${guild.id})`);
     });
-    
+
     await loadState();
     await checkAll();
-    
-    setInterval(checkAll, 30 * 1000);
-    
+
+    startPreciseScheduler();
+
     console.log('👀 Бот запущен и следит за каналами');
+
 });
 
 client.login(process.env.USER_TOKEN);
