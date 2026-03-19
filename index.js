@@ -1,3 +1,5 @@
+let isPaused = true;
+
 require('dotenv').config();
 const { Client } = require('discord.js-selfbot-v13');
 const axios = require('axios');
@@ -486,6 +488,11 @@ async function sendToDiscord() {
 // ===== ОСНОВНАЯ ПРОВЕРКА =====
 async function checkAll() {
     console.log(`\n🕒 ${new Date().toLocaleTimeString()} - Проверка...`);
+
+    if (isPaused) {
+    console.log('⏸️ Бот на паузе');
+    return;
+    }
     
     // 1️⃣ Сначала проверяем официального бота
     let newSeeds = await parseOfficialSeedChannel();
